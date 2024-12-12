@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, redirect, url_for
-from .. import app
+from .. import app, redis_client
 from .functions import generate_token, token_required
 
 # Fix for pylsp
@@ -21,9 +21,13 @@ def login():
     return jsonify({'token': None, 'message': 'Invalid credentials'}), 401
 
 
-@app.get("/profile/logout")
-def logout():
-    return "WIP"
+@app.post("/profile/logout")
+@token_required
+def logout(current_user):
+    token = request.headers['Authorization'].split(" ")[1]
+    redis_client.delete(f"user:{current_user}:token")
+    redis_client.delete(f"token:{token}")
+    return jsonify({'message': 'Logged out successfully'}), 200
 
 
 @app.get("/profile/")

@@ -1,6 +1,7 @@
 import jwt
 import datetime
-from .. import app
+import redis
+from .. import app, redis_client
 from flask import Flask, request, jsonify
 from functools import wraps
 
@@ -14,6 +15,10 @@ def generate_token(user_id):
         'iat': datetime.datetime.utcnow()  # Issued at time
     }
     token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+    # Store the token in Redis with an expiration time
+    redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=30), token)
+
     return token
 
 def token_required(f):
@@ -26,12 +31,24 @@ def token_required(f):
             return jsonify({'message': 'Token is missing!'}), 401
 
         try:
-            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            current_user = data['user_id'] # Get user_id from token
-        except jwt.ExpiredSignatureError:
-            return jsonify({'message': 'Token has expired!'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'message': 'Token is invalid!'}), 401
+            # Check if the token exists in Redis
+            user_id_bytes = redis_client.get(f"token:{token}")
 
-        return f(current_user, *args, **kwargs)  # Pass the user_id to the protected route
+            if user_id_bytes:
+                user_id = int(user_id_bytes.decode('utf-8'))
+            else:
+                try:
+                    data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+                    user_id = data['user_id']
+                    redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=30), token)
+                    redis_client.setex(f"token:{token}", datetime.timedelta(minutes=30), str(user_id))
+                except jwt.ExpiredSignatureError:
+                    return jsonify({'message': 'Token has expired!'}), 401
+                except jwt.InvalidTokenError:
+                    return jsonify({'message': 'Token is invalid!'}), 401
+            
+        except Exception as e:
+            return jsonify({'message': 'Something went wrong!' + str(e)}), 500
+
+        return f(user_id, *args, **kwargs)
     return decorated
