@@ -29,8 +29,16 @@ engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
-from .database import users, companies, subscribers
+from .database import users, companies, subscribers, media
 Base.metadata.create_all(engine)
+
+# Configuration for uploads
+UPLOAD_FOLDER = 'uploads'  # Directory to store uploaded files
+ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'mp3'}  # Allowed file extensions
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Create the upload directory if it doesn't exist
+app.config['MAX_CONTENT_LENGTH'] = None  # Disable limit in Flask
 
 @app.route("/")
 def home():

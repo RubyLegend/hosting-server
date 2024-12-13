@@ -4,8 +4,10 @@ import redis
 from .. import app, redis_client
 from flask import Flask, request, jsonify
 from functools import wraps
+import redis
 
 app: Flask
+redis_client: redis.Redis
 
 def generate_token(user_id):
     """Generates a JWT token for a given user ID."""
@@ -35,7 +37,19 @@ def token_required(f):
             user_id_bytes = redis_client.get(f"token:{token}")
 
             if user_id_bytes:
-                user_id = int(user_id_bytes.decode('utf-8'))
+                try:
+                    user_id = int(user_id_bytes.decode('utf-8'))
+                except Exception:
+                    return jsonify({'message': 'Token is invalid!'}), 401
+
+                # Latest auth token
+                current_auth_token = redis_client.get(f"user:{user_id}:token").decode("utf-8")
+                if current_auth_token != token:
+                    # If tokens mismatch - then we have second authentication
+                    # Invalidating last one
+                    redis_client.setex(f"token:{token}", datetime.timedelta(minutes=30), "INVALID")
+                    redis_client.setex(f"token:{current_auth_token}", datetime.timedelta(minutes=30), str(user_id))
+                    return jsonify({'message': 'Token has expired!'}), 401
             else:
                 try:
                     data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])

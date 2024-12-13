@@ -56,7 +56,7 @@ create table Media(
   NameV varchar(255) not null,
   DescriptionV varchar(10000),
   UploadTime timestamp,
-  VideoPath varchar(255)
+  VideoPath varchar(255) not null unique
 );
 
 create table RatingTypes(
