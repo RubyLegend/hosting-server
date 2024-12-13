@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename  # For secure filename
 from .. import app, Session, redis_client
 from ..user.functions import token_required
 from ..database.media import Media
+from ..database.tags import Tags
 from .helpers import allowed_file, get_unique_filepath, generate_temporary_link
 
 
@@ -37,6 +38,7 @@ def upload_video(current_user):  # current_user is passed from decorator
             name = data.get('name')
             description = data.get('description')
             id_company = data.get('idCompany')
+            tags = data.get('tags') # Get the tags string
 
             if not name:
                 os.remove(filepath)
@@ -53,6 +55,20 @@ def upload_video(current_user):  # current_user is passed from decorator
                 )
                 session.add(new_media)
                 session.commit()
+                session.flush()
+
+                if tags and len(tags) != 0:  # If tags were provided
+                    tags_list = [int(tag) for tag in tags]  # Split and clean tags
+                    for tag_id in tags_list:
+                        tag = session.query(Tags).filter_by(IdTag=tag_id).first()
+                        if not tag:
+                            session.rollback()
+                            os.remove(filepath)
+                            return jsonify({'message': 'Tag not found'}), 400
+
+                        new_media.tags.append(tag)
+                session.commit()
+
                 return jsonify({'message': 'File uploaded successfully'}), 201
             except Exception as e:
                 session.rollback()
@@ -79,7 +95,17 @@ def get_video_link(current_user, v):
             return jsonify({'message': 'Video not found'}), 404
 
         temp_link = generate_temporary_link(v, media.NameV)
-        return jsonify({'temporary_link': temp_link}), 200
+
+        tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
+
+        media_info = {
+            "name": media.NameV,
+            "description": media.DescriptionV,
+            "temporary_link": temp_link,
+            "tags": tags
+        }
+
+        return jsonify(media_info), 200
 
     except Exception as e:
         app.logger.exception(f"Error generating temporary link: {e}")

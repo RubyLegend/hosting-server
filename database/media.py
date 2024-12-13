@@ -12,3 +12,5 @@ class Media(Base):
     DescriptionV = Column(VARCHAR(10000))
     UploadTime = Column(TIMESTAMP())
     VideoPath = Column(VARCHAR(255), nullable=False, unique=True)
+
+    tags = relationship("Tags", secondary="MediaTagsConnector", back_populates="media")

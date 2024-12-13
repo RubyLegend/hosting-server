@@ -11,6 +11,8 @@ drop table if exists ViewHistory;
 drop table if exists UserRoles;
 drop table if exists AccessLevels;
 drop table if exists Users;
+drop table if exists MediaTagsConnector;
+drop table if exists Tags;
 drop table if exists Media;
 drop table if exists Companies;
 create table Users (
@@ -108,4 +110,17 @@ create table UserRoles(
   foreign key(IdCompany) references Companies(IdCompany),
   IdAccessLevel int,
   foreign key(IdAccessLevel) references AccessLevels(IdAccessLevel)
+);
+
+create table Tags(
+  IdTag int not null primary key auto_increment,
+  TagName varchar(50) not null
+);
+
+create table MediaTagsConnector(
+  IdConnection int not null primary key auto_increment,
+  IdTag int,
+  FOREIGN KEY(IdTag) REFERENCES Tags(IdTag),
+  IdMedia int,
+  FOREIGN KEY(IdMedia) REFERENCES Media(IdMedia)
 );
