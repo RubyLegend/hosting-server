@@ -1,10 +1,14 @@
 from .. import Base
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP
+from sqlalchemy.orm import relationship
 
 
-class User(Base):
-    __tablename__ = 'users'
+class SearchHistory(Base):
+    __tablename__ = 'SearchHistory'
 
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    IdSearchHistory = Column(Integer, primary_key=True, autoincrement=True)
+    IdUser = Column(Integer, ForeignKey("Users.IdUser"))
+    SearchQuery = Column(String(255))
+    SearchTime = Column(TIMESTAMP)
+
+    users = relationship("Users", back_populates="search_history")

@@ -1,10 +1,13 @@
 from .. import Base
 from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
 
 
-class User(Base):
-    __tablename__ = 'users'
+class AccessLevels(Base):
+    __tablename__ = 'AccessLevels'
 
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    IdAccessLevel = Column(Integer, primary_key=True, autoincrement=True)
+    AccessName = Column(String(20), nullable=False)
+    AccessLevel = Column(Integer, nullable=False, default=1)
+
+    user_roles = relationship("UserRoles", back_populates="access_levels")

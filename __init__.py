@@ -29,8 +29,9 @@ engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
-from .database import users, companies, subscribers, media, \
-                    tags, mediaTagsConnector
+from .database import accessLevels, comments, companies, \
+    media, mediaTagsConnector, ratings, ratingTypes, searchHistory, \
+    subscribers, tags, userRoles, users, viewHistory
 Base.metadata.create_all(engine)
 
 # Configuration for uploads

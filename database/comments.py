@@ -1,10 +1,16 @@
 from .. import Base
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
 
 
-class User(Base):
-    __tablename__ = 'users'
+class Comments(Base):
+    __tablename__ = 'Comments'
 
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    IdComment = Column(Integer, primary_key=True, autoincrement=True)
+    IdUser = Column(Integer, ForeignKey("Users.IdUser"))
+    IdMedia = Column(Integer, ForeignKey("Media.IdMedia"))
+    TextComment = Column(String(10000), nullable=False)
+    Date = Column(DateTime, nullable=False)
+
+    users = relationship("Users", back_populates="comments")
+    media = relationship("Media", back_populates="comments")

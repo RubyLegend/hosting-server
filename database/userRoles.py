@@ -1,10 +1,15 @@
 from .. import Base
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy.orm import relationship
 
 
-class User(Base):
-    __tablename__ = 'users'
+class UserRoles(Base):
+    __tablename__ = 'UserRoles'
 
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    IdUser = Column(Integer, ForeignKey("Users.IdUser"), primary_key=True)
+    IdCompany = Column(Integer, ForeignKey("Companies.IdCompany"), primary_key=True)
+    IdAccessLevel = Column(Integer, ForeignKey("AccessLevels.IdAccessLevel"))
+
+    users = relationship("Users", back_populates="user_roles")
+    companies = relationship("Companies", back_populates="user_roles")
+    access_levels = relationship("AccessLevels", back_populates="user_roles")

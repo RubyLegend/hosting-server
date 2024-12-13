@@ -1,10 +1,15 @@
 from .. import Base
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, ForeignKey, TIMESTAMP
+from sqlalchemy.orm import relationship
 
 
-class User(Base):
-    __tablename__ = 'users'
+class ViewHistory(Base):
+    __tablename__ = 'ViewHistory'
 
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    IdViewHistory = Column(Integer, primary_key=True, autoincrement=True)
+    IdUser = Column(Integer, ForeignKey("Users.IdUser"))
+    IdMedia = Column(Integer, ForeignKey("Media.IdMedia"))
+    ViewTime = Column(TIMESTAMP)
+
+    users = relationship("Users", back_populates="view_history")
+    media = relationship("Media", back_populates="view_history")

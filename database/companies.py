@@ -10,4 +10,6 @@ class Companies(Base):
     Name = Column(VARCHAR(255), nullable=False)
     About = Column(TEXT(65535))
 
+    media = relationship("Media", back_populates="companies")
+    user_roles = relationship("UserRoles", back_populates="companies")
     subscribers = relationship("Subscribers", back_populates="companies")
