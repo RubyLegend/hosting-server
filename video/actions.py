@@ -151,3 +151,27 @@ def stream_video_from_link(link_id, filename):
         return jsonify({'message': 'Error streaming video'}), 500
     finally:
         session.close()
+
+
+@app.get('/video')
+def get_all_videos():
+    session = Session()
+    try:
+        videos = session.query(Media).all()
+        video_list = []
+        for video in videos:
+            tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in video.tags]
+            video_list.append({
+                "id": video.IdMedia,
+                "name": video.NameV,
+                "description": video.DescriptionV,
+                "upload_time": video.UploadTime.isoformat() if video.UploadTime else None,
+                "tags": tags,
+                "company_id": video.IdCompany
+            })
+        return jsonify(video_list), 200
+    except Exception as e:
+        app.logger.exception(f"Error retrieving videos: {e}")
+        return jsonify({'message': 'Error retrieving videos'}), 500
+    finally:
+        session.close()

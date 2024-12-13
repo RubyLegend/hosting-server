@@ -36,6 +36,6 @@ def generate_temporary_link(media_id, filename):
     redis_client.setex(f"temp_link:{link_id}:{filename}", LINK_EXPIRATION_SECONDS, str(media_id))
 
     # URL encode the filename to handle special characters
-    encoded_filename = urllib.parse.quote(filename)
+    # encoded_filename = urllib.parse.quote(filename)
 
-    return url_for('stream_video_from_link', link_id=link_id, filename=encoded_filename, _external=True)
+    return url_for('stream_video_from_link', link_id=link_id, filename=filename, _external=True)
