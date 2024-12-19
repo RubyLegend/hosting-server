@@ -94,7 +94,8 @@ create table ViewHistory(
   foreign key(IdUser) references Users(IdUser),
   IdMedia int,
   foreign key(IdMedia) references Media(IdMedia),
-  ViewTime timestamp
+  ViewTime timestamp,
+  ViewCount int not null default 1
 );
 
 create table AccessLevels(

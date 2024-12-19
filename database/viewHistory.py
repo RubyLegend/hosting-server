@@ -10,6 +10,7 @@ class ViewHistory(Base):
     IdUser = Column(Integer, ForeignKey("Users.IdUser"))
     IdMedia = Column(Integer, ForeignKey("Media.IdMedia"))
     ViewTime = Column(TIMESTAMP)
+    ViewCount = Column(Integer, nullable=False, default=1)
 
     users = relationship("Users", back_populates="view_history")
     media = relationship("Media", back_populates="view_history")
