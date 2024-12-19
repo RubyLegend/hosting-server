@@ -25,7 +25,7 @@ def login():
         user = session.query(Users).filter_by(LoginUser=username).first()
         if user and bcrypt.checkpw(password.encode('utf-8'), user.Password.encode('utf-8')):
             token = generate_token(user.IdUser)
-            return jsonify({'token': token, 'message': "success"}), 200
+            return jsonify({'user_id': user.IdUser, 'token': token, 'message': "success"}), 200
         return jsonify({'message': 'Invalid credentials'}), 401
     except Exception as e:
         app.logger.error(f"Error during login: {e}") # Log the full error
