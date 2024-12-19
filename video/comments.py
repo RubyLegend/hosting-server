@@ -5,6 +5,7 @@ from ..database.media import Media
 from ..database.users import Users
 from .. import app, Session
 from ..user.functions import token_required
+from sqlalchemy import exc
 
 
 @app.get('/video/comments/<int:v>')
@@ -60,12 +61,59 @@ def add_video_comment(current_user, v):
             Date=datetime.now()
         )
         session.add(new_comment)
+        session.flush()
+
+        user = session.query(Users).filter_by(IdUser=current_user).first()
+
         session.commit()
-        return jsonify({'message': 'Comment added successfully'}), 201
+        return jsonify({'message': 'Comment added successfully', 
+                        'comment': {
+                            'id': new_comment.IdComment,
+                            'user_id': new_comment.IdUser,
+                            'user_login': user.LoginUser if user else None,
+                            'text': new_comment.TextComment,
+                            'date': new_comment.Date.isoformat()
+                        }}), 201
 
     except Exception as e:
         session.rollback()
         app.logger.exception(f"Error adding comment: {e}")
         return jsonify({'message': 'Error adding comment'}), 500
+    finally:
+        session.close()
+
+
+@app.delete('/comments/<int:comment_id>')
+@token_required
+def delete_video_comment(current_user, comment_id):
+    if not comment_id:
+        return jsonify({'message': 'Comment ID is required'}), 400
+
+    try:
+        comment_id = int(comment_id)
+    except ValueError:
+        return jsonify({'message': 'Invalid comment ID. Must be an integer'}), 400
+
+    session = Session()
+    try:
+        comment = session.query(Comments).filter_by(IdComment=comment_id).first()
+        if not comment:
+            return jsonify({'message': 'Comment not found'}), 404
+
+        if comment.IdUser != current_user:
+            return jsonify({'message': 'You are not authorized to delete this comment'}), 403
+
+        session.delete(comment)
+        session.commit()
+        return jsonify({'message': 'Comment deleted successfully'}), 200
+
+    except exc.IntegrityError as e:
+        session.rollback()
+        app.logger.exception(f"Database integrity error during comment deletion: {e}")
+        return jsonify({'message': 'Database integrity error'}), 500
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error deleting comment: {e}")
+        return jsonify({'message': 'Error deleting comment'}), 500
     finally:
         session.close()

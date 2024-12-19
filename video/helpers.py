@@ -4,7 +4,9 @@ import os
 import urllib
 from .. import app, ALLOWED_EXTENSIONS, redis_client
 from ..database.media import Media
+from ..database.ratings import Ratings
 import uuid
+from sqlalchemy import exc, func
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -39,3 +41,27 @@ def generate_temporary_link(media_id, filename):
     # encoded_filename = urllib.parse.quote(filename)
 
     return url_for('stream_video_from_link', link_id=link_id, filename=filename, _external=True)
+
+
+def get_rating_counts(session, media_id, user_id):
+    """Retrieves like/dislike counts and user's rating."""
+    likes = session.query(func.count(Ratings.IdRating)).filter(
+        Ratings.IdMedia == media_id,
+        Ratings.IdRatingType == 2  # Like
+    ).scalar() or 0
+
+    dislikes = session.query(func.count(Ratings.IdRating)).filter(
+        Ratings.IdMedia == media_id,
+        Ratings.IdRatingType == 3  # Dislike
+    ).scalar() or 0
+
+    user_rating = session.query(Ratings).filter_by(IdUser=user_id, IdMedia=media_id).first()
+    user_rating_value = 0  # Default: no rating
+    if user_rating:
+        if user_rating.IdRatingType == 2:
+            user_rating_value = 1  # Like
+        elif user_rating.IdRatingType == 3:
+            user_rating_value = -1  # Dislike
+
+    return likes, dislikes, user_rating_value
+

@@ -1,4 +1,4 @@
-from flask import Response, request, jsonify
+from flask import Flask, Response, request, jsonify
 import datetime
 import os
 import json
@@ -8,16 +8,23 @@ from .. import app, Session, redis_client
 from ..user.functions import token_required
 from ..database.media import Media
 from ..database.tags import Tags
-from .helpers import allowed_file, get_unique_filepath, generate_temporary_link
+from ..database.ratings import Ratings
+from ..database.ratingTypes import RatingTypes
+from ..database.viewHistory import ViewHistory
+from .helpers import allowed_file, get_unique_filepath, generate_temporary_link, get_rating_counts
+from sqlalchemy import exc, func, distinct
 
+app: Flask
 
 @app.post('/video/upload')
 @token_required  # Protect this endpoint
 def upload_video(current_user):  # current_user is passed from decorator
     if 'file' not in request.files:
+        app.logger.exception(f"Video: No Video part")
         return jsonify({'message': 'No video part'}), 400
     file = request.files['file']
     if file.filename == '':
+        app.logger.exception(f"Video: No selected file")
         return jsonify({'message': 'No selected file'}), 400
     if file and allowed_file(file.filename):
         try:
@@ -25,6 +32,7 @@ def upload_video(current_user):  # current_user is passed from decorator
             original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             filepath = get_unique_filepath(original_filepath, Session())
             try:
+                app.logger.info(f"File upload started. Future filename: {filename}")
                 with open(filepath, 'wb') as f:
                     while True:
                         chunk = file.read(4096)  # Read in chunks
@@ -32,6 +40,7 @@ def upload_video(current_user):  # current_user is passed from decorator
                             break
                         f.write(chunk)
             except Exception as e:
+                app.logger.exception(f"Video: Failed to read file from client")
                 return jsonify({'message': str(e)}), 500
 
             data = json.loads(list(request.form.values())[0])
@@ -42,6 +51,7 @@ def upload_video(current_user):  # current_user is passed from decorator
 
             if not name:
                 os.remove(filepath)
+                app.logger.exception(f"Video: Video name not found")
                 return jsonify({'message': 'Video name is required'}), 400
 
             session = Session()
@@ -64,6 +74,7 @@ def upload_video(current_user):  # current_user is passed from decorator
                         if not tag:
                             session.rollback()
                             os.remove(filepath)
+                            app.logger.exception(f"Video: Video tag not found")
                             return jsonify({'message': 'Tag not found'}), 400
 
                         new_media.tags.append(tag)
@@ -82,27 +93,59 @@ def upload_video(current_user):  # current_user is passed from decorator
             app.logger.exception(f"Error during video upload: {e}")
             return jsonify({'message': 'Error uploading file'}), 500
     else:
+        app.logger.exception(f"Video: Invalid file type")
         return jsonify({'message': 'Invalid file type'}), 400
 
 
-@app.route('/video/get/<int:v>')
+@app.route('/video/get/<int:id>')
 @token_required
-def get_video_link(current_user, v):
+def get_video_link(current_user, id):
     session = Session()
     try:
-        media = session.query(Media).filter_by(IdMedia=v).first()
+        media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
             return jsonify({'message': 'Video not found'}), 404
 
-        temp_link = generate_temporary_link(v, media.NameV)
+        # View History Logic
+        view_history_entry = session.query(ViewHistory).filter_by(IdUser=current_user, IdMedia=id).first()
+        if view_history_entry:
+            view_history_entry.ViewTime = datetime.datetime.now()
+            view_history_entry.ViewCount += 1
+        else:
+            new_view_history = ViewHistory(
+                IdUser=current_user,
+                IdMedia=id,
+                ViewTime=datetime.datetime.now()
+            )
+            session.add(new_view_history)
+        session.commit()
+        # End of View History Logic
+
+        # Get total view count
+        total_views = session.query(func.sum(ViewHistory.ViewCount)).filter(ViewHistory.IdMedia == id).scalar()
+        total_views = int(total_views) if total_views is not None else 0 # Explicitly convert to int
+
+        # Get unique viewer count
+        unique_viewers = session.query(func.count(distinct(ViewHistory.IdUser))).filter(ViewHistory.IdMedia == id).scalar()
+        unique_viewers = int(unique_viewers) if unique_viewers is not None else 0 # Explicitly convert to int
+
+        temp_link = generate_temporary_link(id, media.NameV)
 
         tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
+        likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+
+        app.logger.info(f"{likes},{dislikes},{user_rating_value}")
 
         media_info = {
             "name": media.NameV,
             "description": media.DescriptionV,
             "temporary_link": temp_link,
-            "tags": tags
+            "tags": tags,
+            'likes': likes,
+            'dislikes': dislikes,
+            'user_rating': user_rating_value,
+            "total_views": total_views,  # Added total view count
+            "unique_viewers": unique_viewers  # Added unique viewer count
         }
 
         return jsonify(media_info), 200
@@ -110,6 +153,92 @@ def get_video_link(current_user, v):
     except Exception as e:
         app.logger.exception(f"Error generating temporary link: {e}")
         return jsonify({'message': 'Error generating link'}), 500
+    finally:
+        session.close()
+
+
+@app.post('/video/rating/<int:id>')
+@token_required
+def rate_video(current_user, id):
+    data = request.get_json()
+    rating_value = data.get('rating')  # 0, 1, or -1
+
+    if rating_value is None:
+        return jsonify({'message': 'Rating value is required'}), 400
+
+    if rating_value not in (0, 1, -1):
+        return jsonify({'message': 'Invalid rating value. Must be 0, 1, or -1'}), 400
+
+    session = Session()
+    try:
+        media = session.query(Media).filter_by(IdMedia=id).first()
+        if not media:
+            return jsonify({'message': 'Video not found'}), 404
+
+        existing_rating = session.query(Ratings).filter_by(IdUser=current_user, IdMedia=id).first()
+
+        if rating_value == 0:  # Remove rating
+            if existing_rating:
+                session.delete(existing_rating)
+                session.commit()
+                likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+                return jsonify({
+                    'message': 'Rating removed',
+                    'likes': likes,
+                    'dislikes': dislikes,
+                    'user_rating': user_rating_value
+                }), 200
+            else:
+                return jsonify({'message': 'No rating to remove'}), 200 # Nothing to remove
+
+        rating_type = None
+        if rating_value == 1:
+            rating_type = session.query(RatingTypes).filter_by(NameRating="Like").first()
+        elif rating_value == -1:
+            rating_type = session.query(RatingTypes).filter_by(NameRating="Dislike").first()
+
+        if not rating_type:
+            return jsonify({'message': 'Rating types not configured correctly'}), 500
+
+        if existing_rating:
+            if existing_rating.IdRatingType == rating_type.IdRatingType:
+                return jsonify({'message': 'Rating cannot be the same as before.'}), 400
+
+            existing_rating.IdRatingType = rating_type.IdRatingType
+            existing_rating.RatingTime = datetime.datetime.now()
+            session.commit()
+            likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+            return jsonify({
+                'message': 'Rating updated',
+                'likes': likes,
+                'dislikes': dislikes,
+                'user_rating': user_rating_value
+            }), 201
+
+        new_rating = Ratings(
+            IdUser=current_user,
+            IdMedia=id,
+            IdRatingType=rating_type.IdRatingType,
+            RatingTime=datetime.datetime.now()
+        )
+        session.add(new_rating)
+        session.commit()
+        likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+        return jsonify({
+            'message': 'Rating added',
+            'likes': likes,
+            'dislikes': dislikes,
+            'user_rating': user_rating_value
+        }), 201
+
+    except exc.IntegrityError as e:
+        session.rollback()
+        app.logger.exception(f"Database integrity error during rating: {e}")
+        return jsonify({'message': 'Database integrity error'}), 500
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error adding/updating rating: {e}")
+        return jsonify({'message': 'Error adding/updating rating'}), 500
     finally:
         session.close()
 
