@@ -29,6 +29,7 @@ def get_company_info(current_user, id):
             "id": company.IdCompany,
             "name": company.Name,
             "about": company.About,
+            "owner": company.Owner if company.Owner else "Not set",
             "subscribers": subscriber_count,
             "is_subscribed": is_subscribed
         }

@@ -12,9 +12,11 @@ class Media(Base):
     DescriptionV = Column(VARCHAR(10000))
     UploadTime = Column(TIMESTAMP())
     VideoPath = Column(VARCHAR(255), nullable=False, unique=True)
+    IdMediaPreview = Column(Integer, ForeignKey("MediaPreview.IdMediaPreview"))
 
     companies = relationship("Companies", back_populates="media")
     ratings = relationship("Ratings", back_populates="media")
     comments = relationship("Comments", back_populates="media")
     view_history = relationship("ViewHistory", back_populates="media")
     tags = relationship("Tags", secondary="MediaTagsConnector", back_populates="media")
+    preview = relationship("MediaPreview", back_populates="media")

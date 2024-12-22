@@ -2,8 +2,9 @@ from flask import Flask, url_for
 import datetime
 import os
 from typing import Optional, Tuple
-from .. import app, ALLOWED_EXTENSIONS, redis_client
+from .. import app, ALLOWED_EXTENSIONS, ALLOWED_PREVIEW_EXTENSIONS, redis_client
 from ..database.media import Media
+from ..database.mediaPreview import MediaPreview
 from ..database.ratings import Ratings
 import uuid
 from sqlalchemy import func
@@ -15,6 +16,11 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def allowed_preview_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_PREVIEW_EXTENSIONS
+
+
 def get_unique_filepath(filepath, session):
     """Generates a unique filename by appending a counter if necessary."""
     base, ext = os.path.splitext(filepath)
@@ -22,6 +28,20 @@ def get_unique_filepath(filepath, session):
 
     while True:
         existing_media = session.query(Media).filter_by(VideoPath=filepath).first()
+        if not existing_media:
+            return filepath
+
+        filepath = f"{base}({counter}){ext}"
+        counter += 1
+
+
+def get_unique_filepath_preview(filepath, session):
+    """Generates a unique filename by appending a counter if necessary."""
+    base, ext = os.path.splitext(filepath)
+    counter = 1
+
+    while True:
+        existing_media = session.query(MediaPreview).filter_by(PreviewPath=filepath).first()
         if not existing_media:
             return filepath
 

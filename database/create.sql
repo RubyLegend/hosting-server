@@ -14,6 +14,7 @@ drop table if exists Users;
 drop table if exists MediaTagsConnector;
 drop table if exists Tags;
 drop table if exists Media;
+drop table if exists MediaPreview;
 drop table if exists Companies;
 create table Users (
   IdUser int not null primary key auto_increment,
@@ -32,7 +33,8 @@ create table Users (
 create table Companies(
   IdCompany int not null primary key auto_increment,
   Name varchar(255) not null,
-  About text(65535)
+  About text(65535),
+  Owner varchar(255)
 );
 
 create table Subscribers (
@@ -125,3 +127,11 @@ create table MediaTagsConnector(
   IdMedia int,
   FOREIGN KEY(IdMedia) REFERENCES Media(IdMedia)
 );
+
+create table MediaPreview(
+  IdMediaPreview int not null auto_increment primary key,
+  PreviewPath varchar(1024) not null
+);
+
+insert into MediaPreview(PreviewPath) values ("previews/default_video.jpg"), ("default_audio.jpg");
+

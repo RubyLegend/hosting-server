@@ -8,7 +8,7 @@ from ..user.functions import token_required
 from sqlalchemy import exc
 
 
-@app.get('/video/comments/<int:v>')
+@app.get('/video/<int:v>/comments')
 @token_required
 def get_video_comments(current_user, v):
     session = Session()
@@ -39,7 +39,7 @@ def get_video_comments(current_user, v):
         session.close()
 
 
-@app.post('/video/comments/<int:v>')
+@app.post('/video/<int:v>/comments')
 @token_required
 def add_video_comment(current_user, v):
     data = request.get_json()

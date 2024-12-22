@@ -1,18 +1,22 @@
-from flask import Flask, Response, request, jsonify
+from flask import Flask, Response, request, jsonify, send_from_directory
 import datetime
 import os
 import re
 import json
 import urllib
+import mimetypes
 from werkzeug.utils import secure_filename  # For secure filename
-from .. import app, Session, redis_client
+from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
 from ..user.functions import token_required
 from ..database.media import Media
+from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
 from ..database.ratings import Ratings
 from ..database.ratingTypes import RatingTypes
 from ..database.viewHistory import ViewHistory
-from .functions import allowed_file, get_unique_filepath, generate_temporary_link, get_rating_counts, get_chunk
+from .functions import (allowed_file, allowed_preview_file,
+                        get_unique_filepath, generate_temporary_link,
+                        get_rating_counts, get_chunk, get_unique_filepath_preview)
 from sqlalchemy import exc, func, distinct
 
 app: Flask
@@ -27,78 +31,121 @@ def upload_video(current_user):  # current_user is passed from decorator
     if file.filename == '':
         app.logger.exception(f"Video: No selected file")
         return jsonify({'message': 'No selected file'}), 400
-    if file and allowed_file(file.filename):
-        try:
-            filename = secure_filename(file.filename)
-            original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            filepath = get_unique_filepath(original_filepath, Session())
-            try:
-                app.logger.info(f"File upload started. Future filename: {filename}")
-                with open(filepath, 'wb') as f:
-                    while True:
-                        chunk = file.read(4096)  # Read in chunks
-                        if not chunk:
-                            break
-                        f.write(chunk)
-            except Exception as e:
-                app.logger.exception(f"Video: Failed to read file from client")
-                return jsonify({'message': str(e)}), 500
-
-            data = json.loads(list(request.form.values())[0])
-            name = data.get('name')
-            description = data.get('description')
-            id_company = data.get('idCompany')
-            tags = data.get('tags') # Get the tags string
-
-            if not name:
-                os.remove(filepath)
-                app.logger.exception(f"Video: Video name not found")
-                return jsonify({'message': 'Video name is required'}), 400
-
-            session = Session()
-            try:
-                new_media = Media(
-                    IdCompany=id_company,
-                    NameV=name,
-                    DescriptionV=description,
-                    UploadTime=datetime.datetime.now(),
-                    VideoPath=filepath
-                )
-                session.add(new_media)
-                session.commit()
-                session.flush()
-
-                if tags and len(tags) != 0:  # If tags were provided
-                    tags_list = [int(tag) for tag in tags]  # Split and clean tags
-                    for tag_id in tags_list:
-                        tag = session.query(Tags).filter_by(IdTag=tag_id).first()
-                        if not tag:
-                            session.rollback()
-                            os.remove(filepath)
-                            app.logger.exception(f"Video: Video tag not found")
-                            return jsonify({'message': 'Tag not found'}), 400
-
-                        new_media.tags.append(tag)
-                session.commit()
-
-                return jsonify({'message': 'File uploaded successfully'}), 201
-            except Exception as e:
-                session.rollback()
-                os.remove(filepath)
-                app.logger.exception(f"Database error during video upload: {e}")
-                return jsonify({'message': 'Error saving to database'}), 500
-            finally:
-                session.close()
-
-        except Exception as e:
-            app.logger.exception(f"Error during video upload: {e}")
-            return jsonify({'message': 'Error uploading file'}), 500
-    else:
+    if not file or not allowed_file(file.filename):
         app.logger.exception(f"Video: Invalid file type")
         return jsonify({'message': 'Invalid file type'}), 400
 
+    if 'preview' in request.files:
+        preview_file = request.files['preview'] # Get preview file
+    else:
+        preview_file = None
 
-@app.route('/video/get/<int:id>')
+    try:
+        filename = secure_filename(file.filename)
+        original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filepath = get_unique_filepath(original_filepath, Session())
+        try:
+            app.logger.info(f"File upload started. Future filename: {filename}")
+            with open(filepath, 'wb') as f:
+                while True:
+                    chunk = file.read(4096)  # Read in chunks
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        except Exception as e:
+            app.logger.exception(f"Video: Failed to read file from client")
+            return jsonify({'message': str(e)}), 500
+
+        data = json.loads(list(request.form.values())[0])
+        name = data.get('name')
+        description = data.get('description')
+        id_company = data.get('idCompany')
+        tags = data.get('tags') # Get the tags string
+
+        if not name:
+            os.remove(filepath)
+            app.logger.exception(f"Video: Video name not found")
+            return jsonify({'message': 'Video name is required'}), 400
+
+        new_preview_file = False
+        if preview_file:
+            if allowed_preview_file(preview_file.filename):  # Proceed only if file has correct extension
+                # Save preview
+                preview_filename = secure_filename(preview_file.filename)
+                preview_path = os.path.join(app.config['PREVIEW_FOLDER'], preview_filename)
+                preview_path = get_unique_filepath_preview(preview_path, Session())
+                preview_file.save(preview_path)
+                # with open(preview_path, 'wb') as f:
+                #     while True:
+                #         chunk = preview_file.read(4096)  # Read in chunks
+                #         if not chunk:
+                #             break
+                #         f.write(chunk)
+                new_preview_file = True
+            else:  # If preview file is not of allowed type
+                file_extension = os.path.splitext(filename)[1][1:].lower()
+                if file_extension in ALLOWED_VIDEO_EXTENSIONS:
+                    id_media_preview = 1
+                elif file_extension in ALLOWED_AUDIO_EXTENSIONS:
+                    id_media_preview = 2
+        else:  # If preview file is not provided
+            file_extension = os.path.splitext(filename)[1][1:].lower()
+            if file_extension in ALLOWED_VIDEO_EXTENSIONS:
+                id_media_preview = 1
+            elif file_extension in ALLOWED_AUDIO_EXTENSIONS:
+                id_media_preview = 2
+
+        session = Session()
+        try:
+            if new_preview_file:
+                new_preview = MediaPreview(
+                    PreviewPath=preview_path
+                )
+                session.add(new_preview)
+                session.commit()
+                session.flush()
+                id_media_preview = new_preview.IdMediaPreview
+
+            new_media = Media(
+                IdCompany=id_company,
+                NameV=name,
+                DescriptionV=description,
+                UploadTime=datetime.datetime.now(),
+                VideoPath=filepath,
+                IdMediaPreview=id_media_preview
+            )
+            session.add(new_media)
+            session.commit()
+            session.flush()
+
+            if tags and len(tags) != 0:  # If tags were provided
+                tags_list = [int(tag) for tag in tags]  # Split and clean tags
+                for tag_id in tags_list:
+                    tag = session.query(Tags).filter_by(IdTag=tag_id).first()
+                    if not tag:
+                        session.rollback()
+                        os.remove(filepath)
+                        app.logger.exception("Video: Video tag not found")
+                        return jsonify({'message': 'Tag not found'}), 400
+
+                    new_media.tags.append(tag)
+            session.commit()
+
+            return jsonify({'message': 'File uploaded successfully'}), 201
+        except Exception as e:
+            session.rollback()
+            os.remove(filepath)
+            app.logger.exception(f"Database error during video upload: {e}")
+            return jsonify({'message': 'Error saving to database'}), 500
+        finally:
+            session.close()
+
+    except Exception as e:
+        app.logger.exception(f"Error during video upload: {e}")
+        return jsonify({'message': 'Error uploading file'}), 500
+
+
+@app.route('/video/<int:id>/get')
 @token_required
 def get_video_link(current_user, id):
     session = Session()
@@ -156,7 +203,31 @@ def get_video_link(current_user, id):
         session.close()
 
 
-@app.post('/video/rating/<int:id>')
+@app.get('/video/<int:id>/preview')
+def get_video_preview(id):
+    session = Session()
+    try:
+        media = session.query(Media).filter_by(IdMedia=id).first()
+        if not media:
+            return jsonify({'message': 'Video not found'}), 404
+
+        if media.preview:
+            preview_path = media.preview.PreviewPath
+            if os.path.exists(preview_path):
+                return send_from_directory(os.path.dirname(preview_path), os.path.basename(preview_path))
+            else:
+                 return jsonify({'message': 'Preview file not found'}), 404
+        else:
+            return jsonify({'message': 'No preview available'}), 404
+
+    except Exception as e:
+        app.logger.exception(f"Error getting video preview: {e}")
+        return jsonify({'message': 'Error getting video preview'}), 500
+    finally:
+        session.close()
+
+
+@app.post('/video/<int:id>/rating')
 @token_required
 def rate_video(current_user, id):
     data = request.get_json()
@@ -278,7 +349,11 @@ def stream_video_from_link(link_id, filename):
 
         chunk, start, length, file_size = get_chunk(byte1, byte2, filepath)
 
-        resp = Response(chunk, 206, content_type="video/mp4", mimetype="video/mp4", direct_passthrough=True)  # Set Content-Disposition header
+        content_type, _ = mimetypes.guess_type(media.NameV)
+        if not content_type:
+            content_type = 'application/octet-stream'  # Default if type is unknown
+
+        resp = Response(chunk, 206, content_type=content_type, direct_passthrough=True)  # Set Content-Disposition header
         resp.headers.add('Content-Range', 'bytes {0}-{1}/{2}'.format(start, start + length - 1, file_size))
         return resp
     except Exception as e:
