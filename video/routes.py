@@ -1,6 +1,7 @@
 from flask import Flask, Response, request, jsonify
 import datetime
 import os
+import re
 import json
 import urllib
 from werkzeug.utils import secure_filename  # For secure filename
@@ -11,7 +12,7 @@ from ..database.tags import Tags
 from ..database.ratings import Ratings
 from ..database.ratingTypes import RatingTypes
 from ..database.viewHistory import ViewHistory
-from .helpers import allowed_file, get_unique_filepath, generate_temporary_link, get_rating_counts
+from .functions import allowed_file, get_unique_filepath, generate_temporary_link, get_rating_counts, get_chunk
 from sqlalchemy import exc, func, distinct
 
 app: Flask
@@ -263,16 +264,23 @@ def stream_video_from_link(link_id, filename):
 
         # Decode the filename from the URL
         decoded_filename = urllib.parse.unquote(filename)
+        range_header = request.headers.get('Range', None)
+        byte1, byte2 = 0, None
+        
+        if range_header:
+            match = re.search(r'(\d+)-(\d*)', range_header)
+            groups = match.groups()
 
-        def generate():
-            with open(filepath, "rb") as f:
-                while True:
-                    chunk = f.read(4096)
-                    if not chunk:
-                        break
-                    yield chunk
+            if groups[0]:
+                byte1 = int(groups[0])
+            if groups[1]:
+                byte2 = int(groups[1])
 
-        return Response(generate(), mimetype="video/mp4")  # Set Content-Disposition header
+        chunk, start, length, file_size = get_chunk(byte1, byte2, filepath)
+
+        resp = Response(chunk, 206, content_type="video/mp4", mimetype="video/mp4", direct_passthrough=True)  # Set Content-Disposition header
+        resp.headers.add('Content-Range', 'bytes {0}-{1}/{2}'.format(start, start + length - 1, file_size))
+        return resp
     except Exception as e:
         app.logger.exception(f"Error streaming video: {e}")
         return jsonify({'message': 'Error streaming video'}), 500

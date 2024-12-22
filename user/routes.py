@@ -5,6 +5,7 @@ from sqlalchemy import exc
 from .. import app, redis_client, Session
 from .functions import generate_token, token_required
 from ..database.users import Users
+from ..database.companies import Companies
 
 # Fix for pylsp
 app: Flask
@@ -51,11 +52,71 @@ def profile_redir():
 @app.get("/profile")
 @token_required
 def profile(current_user):
-    return jsonify({
-        "user_id": current_user,
-        'user': 'Ruby',
-        'authorized': 'yes',
-    }), 200
+    session = Session()
+    try:
+        user = session.query(Users).filter_by(IdUser=current_user).first()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404  # Should not happen if token_required is working correctly
+
+        subscriptions = []
+        for subscription in user.subscribers:
+            company = session.query(Companies).filter_by(IdCompany=subscription.IdCompany).first()
+            if company: # Handle cases where company might have been deleted
+                subscriptions.append({
+                    "company_id": subscription.IdCompany,
+                    "company_name": company.Name
+                })
+
+        user_info = {
+            "user_id": user.IdUser,
+            "login": user.LoginUser,
+            "name": user.NameUser,
+            "surname": user.Surname,
+            "subscriptions": subscriptions
+        }
+
+        return jsonify(user_info), 200
+
+    except exc.SQLAlchemyError as e:
+        app.logger.exception(f"Database error getting user profile: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        app.logger.exception(f"Error getting user profile: {e}")
+        return jsonify({'message': 'Error getting user profile'}), 500
+    finally:
+        session.close()
+
+
+@app.get("/profile/subscriptions")
+@token_required
+def get_profile_subscriptions(current_user):
+    session = Session()
+    try:
+        user = session.query(Users).filter_by(IdUser=current_user).first()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404  # Should not happen if token_required is working correctly
+
+        subscriptions = []
+        for subscription in user.subscribers:
+            company = session.query(Companies).filter_by(IdCompany=subscription.IdCompany).first()
+            if company: # Handle cases where company might have been deleted
+                subscriptions.append({
+                    "company_id": subscription.IdCompany,
+                    "company_name": company.Name
+                })
+
+        return jsonify(subscriptions), 200
+
+    except exc.SQLAlchemyError as e:
+        app.logger.exception(f"Database error getting user profile: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        app.logger.exception(f"Error getting user profile: {e}")
+        return jsonify({'message': 'Error getting user profile'}), 500
+    finally:
+        session.close()
+
+
 
 @app.post('/profile/register')
 def register():
