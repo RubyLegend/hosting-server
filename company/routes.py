@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from sqlalchemy import exc, func
 from ..database.companies import Companies
 from ..database.subscribers import Subscribers
+from ..database.media import Media
 from .. import app, Session
 from ..user.functions import token_required
 
@@ -109,5 +110,38 @@ def unsubscribe_from_company(current_user, id):
         session.rollback()
         app.logger.exception(f"Error unsubscribing from company: {e}")
         return jsonify({'message': 'Error unsubscribing from company'}), 500
+    finally:
+        session.close()
+
+
+@app.get('/company/<int:id>/videos')
+def get_company_videos(id):
+    session = Session()
+    try:
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        videos = session.query(Media).filter_by(IdCompany=id).all()
+
+        video_list = []
+        for video in videos:
+            tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in video.tags]
+            video_list.append({
+                "id": video.IdMedia,
+                "name": video.NameV,
+                "description": video.DescriptionV,
+                "upload_time": video.UploadTime.isoformat() if video.UploadTime else None,
+                "tags": tags
+            })
+
+        return jsonify(video_list), 200
+
+    except exc.SQLAlchemyError as e:
+        app.logger.exception(f"Database error getting company videos: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        app.logger.exception(f"Error getting company videos: {e}")
+        return jsonify({'message': 'Error getting company videos'}), 500
     finally:
         session.close()
