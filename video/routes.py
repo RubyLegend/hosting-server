@@ -204,7 +204,8 @@ def get_video_link(current_user, id):
 
 
 @app.get('/video/<int:id>/preview')
-def get_video_preview(id):
+@token_required
+def get_video_preview(current_user, id):
     session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()

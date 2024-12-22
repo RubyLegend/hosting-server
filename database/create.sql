@@ -30,11 +30,20 @@ create table Users (
   IsAdmin boolean default 0
 );
 
+create table CompanyLogo(
+  IdCompanyLogo int not null auto_increment primary key,
+  LogoPath varchar(1024) not null
+);
+
+insert into CompanyLogo(LogoPath) value ("logo/default_logo.jpg");
+
 create table Companies(
   IdCompany int not null primary key auto_increment,
   Name varchar(255) not null,
   About text(65535),
-  Owner varchar(255)
+  Owner varchar(255),
+  IdCompanyLogo int not null default 1,
+  foreign key(IdCompanyLogo) references CompanyLogo(IdCompanyLogo)
 );
 
 create table Subscribers (
@@ -134,4 +143,3 @@ create table MediaPreview(
 );
 
 insert into MediaPreview(PreviewPath) values ("previews/default_video.jpg"), ("default_audio.jpg");
-

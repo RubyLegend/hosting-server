@@ -1,5 +1,5 @@
 from .. import Base
-from sqlalchemy import Column, Integer, String, VARCHAR, TEXT
+from sqlalchemy import Column, Integer, String, VARCHAR, TEXT, ForeignKey
 from sqlalchemy.orm import relationship
 
 
@@ -10,7 +10,9 @@ class Companies(Base):
     Name = Column(VARCHAR(255), nullable=False)
     About = Column(TEXT(65535))
     Owner = Column(VARCHAR(255))
+    IdCompanyLogo = Column(Integer, ForeignKey("CompanyLogo.IdCompanyLogo"))
 
     media = relationship("Media", back_populates="companies")
     user_roles = relationship("UserRoles", back_populates="companies")
     subscribers = relationship("Subscribers", back_populates="companies")
+    companyLogo = relationship("CompanyLogo", back_populates="companies")

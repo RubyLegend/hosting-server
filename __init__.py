@@ -31,12 +31,14 @@ Base = declarative_base()
 
 from .database import accessLevels, comments, companies, \
     media, mediaTagsConnector, ratings, ratingTypes, searchHistory, \
-    subscribers, tags, userRoles, users, viewHistory, mediaPreview
+    subscribers, tags, userRoles, users, viewHistory, mediaPreview, \
+    logos
 Base.metadata.create_all(engine)
 
 # Configuration for uploads
 UPLOAD_FOLDER = 'uploads'  # Directory to store uploaded files
 PREVIEW_FOLDER = 'previews'
+LOGO_FOLDER = 'logos'
 
 # mid files currently not working as expected
 # WMP infinitely loading file without actually caching it
@@ -48,7 +50,9 @@ ALLOWED_PREVIEW_EXTENSIONS = {'jpg', 'jpeg', 'png'}  # Allowed preview extension
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Create the upload directory if it doesn't exist
 app.config['PREVIEW_FOLDER'] = PREVIEW_FOLDER
-os.makedirs(PREVIEW_FOLDER, exist_ok=True)  # Create the upload directory if it doesn't exist
+os.makedirs(PREVIEW_FOLDER, exist_ok=True)  # Create the preview directory if it doesn't exist
+app.config['LOGO_FOLDER'] = LOGO_FOLDER
+os.makedirs(LOGO_FOLDER, exist_ok=True)  # Create the logo directory if it doesn't exist
 app.config['MAX_CONTENT_LENGTH'] = None  # Disable limit in Flask
 
 @app.route("/")

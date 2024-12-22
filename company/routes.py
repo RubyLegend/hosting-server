@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_from_directory
 from sqlalchemy import exc, func
 from ..database.companies import Companies
 from ..database.subscribers import Subscribers
@@ -42,6 +43,31 @@ def get_company_info(current_user, id):
     except Exception as e:
         app.logger.exception(f"Error getting company info: {e}")
         return jsonify({'message': 'Error getting company info'}), 500
+    finally:
+        session.close()
+
+
+@app.get('/company/<int:id>/logo')
+@token_required
+def get_company_preview(current_user, id):
+    session = Session()
+    try:
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        if company.companyLogo:
+            preview_path = company.companyLogo.LogoPath
+            if os.path.exists(preview_path):
+                return send_from_directory(os.path.dirname(preview_path), os.path.basename(preview_path))
+            else:
+                return jsonify({'message': 'Logo file not found'}), 404
+        else:
+            return jsonify({'message': 'No logo available'}), 404
+
+    except Exception as e:
+        app.logger.exception(f"Error getting logo: {e}")
+        return jsonify({'message': 'Error getting logo'}), 500
     finally:
         session.close()
 
