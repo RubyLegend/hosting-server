@@ -134,8 +134,6 @@ def get_video_link(current_user, id):
         tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
         likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
 
-        app.logger.info(f"{likes},{dislikes},{user_rating_value}")
-
         media_info = {
             "name": media.NameV,
             "description": media.DescriptionV,
