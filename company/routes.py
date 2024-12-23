@@ -12,7 +12,8 @@ app: Flask
 
 @app.get('/company/<int:id>')
 @token_required
-def get_company_info(current_user, id):
+def get_company_info(current_user, owned_companies, id):
+
     session = Session()
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
@@ -49,7 +50,7 @@ def get_company_info(current_user, id):
 
 @app.get('/company/<int:id>/logo')
 @token_required
-def get_company_preview(current_user, id):
+def get_company_preview(current_user, owned_companies, id):
     session = Session()
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
@@ -74,7 +75,7 @@ def get_company_preview(current_user, id):
 
 @app.post('/company/<int:id>/subscribe')
 @token_required
-def subscribe_to_company(current_user, id):
+def subscribe_to_company(current_user, owned_companies, id):
     session = Session()
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
@@ -109,7 +110,7 @@ def subscribe_to_company(current_user, id):
 
 @app.post('/company/<int:id>/unsubscribe')
 @token_required
-def unsubscribe_from_company(current_user, id):
+def unsubscribe_from_company(current_user, owned_companies, id):
     session = Session()
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
@@ -142,7 +143,8 @@ def unsubscribe_from_company(current_user, id):
 
 
 @app.get('/company/<int:id>/videos')
-def get_company_videos(id):
+@token_required
+def get_company_videos(currrent_user, owned_companies, id):
     session = Session()
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()

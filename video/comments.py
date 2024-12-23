@@ -4,13 +4,13 @@ from ..database.comments import Comments
 from ..database.media import Media
 from ..database.users import Users
 from .. import app, Session
-from ..user.functions import token_required
+from ..user.functions import token_required, has_moderator_access
 from sqlalchemy import exc
 
 
 @app.get('/video/<int:v>/comments')
 @token_required
-def get_video_comments(current_user, v):
+def get_video_comments(current_user, owned_companies, v):
     session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=v).first()
@@ -41,7 +41,7 @@ def get_video_comments(current_user, v):
 
 @app.post('/video/<int:v>/comments')
 @token_required
-def add_video_comment(current_user, v):
+def add_video_comment(current_user, owned_companies, v):
     data = request.get_json()
     text_comment = data.get('message')
 
@@ -85,7 +85,7 @@ def add_video_comment(current_user, v):
 
 @app.delete('/comments/<int:comment_id>')
 @token_required
-def delete_video_comment(current_user, comment_id):
+def delete_video_comment(current_user, owned_companies, comment_id):
     if not comment_id:
         return jsonify({'message': 'Comment ID is required'}), 400
 
@@ -100,8 +100,8 @@ def delete_video_comment(current_user, comment_id):
         if not comment:
             return jsonify({'message': 'Comment not found'}), 404
 
-        if comment.IdUser != current_user:
-            return jsonify({'message': 'You are not authorized to delete this comment'}), 403
+        if comment.IdUser != current_user and not has_moderator_access(current_user, session):
+            return jsonify({'message': 'You do not have permission to delete this comment'}), 403
 
         session.delete(comment)
         session.commit()

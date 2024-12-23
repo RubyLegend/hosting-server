@@ -115,6 +115,8 @@ create table AccessLevels(
   AccessLevel int not null default 1
 );
 
+insert into AccessLevels(AccessName, AccessLevel) values ("Admin", 10), ("Moderator", 3), ("Company Owner", 5);
+
 create table UserRoles(
   IdUser int,
   foreign key(IdUser) references Users(IdUser),

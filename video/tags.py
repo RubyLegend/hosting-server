@@ -6,7 +6,7 @@ from ..user.functions import token_required
 
 @app.get('/video/tags')
 @token_required
-def get_all_tags(current_user):
+def get_all_tags(current_user, owned_companies):
     session = Session()
     try:
         tags = session.query(Tags).all()

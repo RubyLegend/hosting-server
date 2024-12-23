@@ -7,7 +7,7 @@ import urllib
 import mimetypes
 from werkzeug.utils import secure_filename  # For secure filename
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
-from ..user.functions import token_required
+from ..user.functions import token_required, company_owner_level
 from ..database.media import Media
 from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
@@ -23,7 +23,8 @@ app: Flask
 
 @app.post('/video/upload')
 @token_required  # Protect this endpoint
-def upload_video(current_user):  # current_user is passed from decorator
+@company_owner_level
+def upload_video(current_user, owned_companies):  # current_user is passed from decorator
     if 'file' not in request.files:
         app.logger.exception(f"Video: No Video part")
         return jsonify({'message': 'No video part'}), 400
@@ -147,7 +148,8 @@ def upload_video(current_user):  # current_user is passed from decorator
 
 @app.route('/video/<int:id>/get')
 @token_required
-def get_video_link(current_user, id):
+def get_video_link(current_user, owned_companies, id):
+
     session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
@@ -205,7 +207,7 @@ def get_video_link(current_user, id):
 
 @app.get('/video/<int:id>/preview')
 @token_required
-def get_video_preview(current_user, id):
+def get_video_preview(current_user, owned_companies, id):
     session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
@@ -230,7 +232,7 @@ def get_video_preview(current_user, id):
 
 @app.post('/video/<int:id>/rating')
 @token_required
-def rate_video(current_user, id):
+def rate_video(current_user, owned_companies, id):
     data = request.get_json()
     rating_value = data.get('rating')  # 0, 1, or -1
 
@@ -365,7 +367,8 @@ def stream_video_from_link(link_id, filename):
 
 
 @app.get('/video')
-def get_all_videos():
+@token_required
+def get_all_videos(current_user, owned_companies):
     session = Session()
     try:
         videos = session.query(Media).all()

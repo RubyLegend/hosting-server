@@ -7,7 +7,7 @@ class UserRoles(Base):
     __tablename__ = 'UserRoles'
 
     IdUser = Column(Integer, ForeignKey("Users.IdUser"), primary_key=True)
-    IdCompany = Column(Integer, ForeignKey("Companies.IdCompany"), primary_key=True)
+    IdCompany = Column(Integer, ForeignKey("Companies.IdCompany"), primary_key=True, nullable=True)
     IdAccessLevel = Column(Integer, ForeignKey("AccessLevels.IdAccessLevel"))
 
     users = relationship("Users", back_populates="user_roles")

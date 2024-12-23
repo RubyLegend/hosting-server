@@ -6,6 +6,8 @@ from .. import app, redis_client, Session
 from .functions import generate_token, token_required
 from ..database.users import Users
 from ..database.companies import Companies
+from ..database.accessLevels import AccessLevels
+from ..database.userRoles import UserRoles
 
 # Fix for pylsp
 app: Flask
@@ -37,7 +39,7 @@ def login():
 
 @app.post("/profile/logout")
 @token_required
-def logout(current_user):
+def logout(current_user, owned_companies):
     token = request.headers['Authorization'].split(" ")[1]
     redis_client.delete(f"user:{current_user}:token")
     redis_client.delete(f"token:{token}")
@@ -51,7 +53,7 @@ def profile_redir():
 
 @app.get("/profile")
 @token_required
-def profile(current_user):
+def profile(current_user, owned_companies):
     session = Session()
     try:
         user = session.query(Users).filter_by(IdUser=current_user).first()
@@ -89,7 +91,7 @@ def profile(current_user):
 
 @app.get("/profile/subscriptions")
 @token_required
-def get_profile_subscriptions(current_user):
+def get_profile_subscriptions(current_user, owned_companies):
     session = Session()
     try:
         user = session.query(Users).filter_by(IdUser=current_user).first()
@@ -147,6 +149,19 @@ def register():
     try:
         new_user = Users(Email=email, LoginUser=loginUser, NameUser=nameUser, Surname=surname, Patronymic=patronymic, Birthday=birthday, RegisterTime=registerTime, About=about, Password=hashed_password)
         session.add(new_user)
+        session.commit()
+        session.flush()
+
+         # Add default user role
+        user_level = session.query(AccessLevels).filter_by(AccessName="User").first()
+        if not user_level:
+            app.logger.error("User access level not found in database. Critical error!")
+            session.rollback()
+            return jsonify({'message': 'Internal server error'}), 500
+
+        new_user_role = UserRoles(IdUser=new_user.IdUser, IdAccessLevel=user_level.IdAccessLevel)
+        session.add(new_user_role)
+
         session.commit()
         return jsonify({'message': 'User registered successfully'}), 201
     except exc.IntegrityError as e: # Catch IntegrityError (most common MySQL errors)
