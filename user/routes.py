@@ -3,7 +3,7 @@ import datetime
 import bcrypt
 from sqlalchemy import exc
 from .. import app, redis_client, Session
-from .functions import generate_token, token_required, after_token_required, has_admin_access, has_company_owner_access, has_moderator_access, get_access_level_by_name
+from .functions import generate_token, token_required, after_token_required, company_owner_level, has_admin_access, has_company_owner_access, has_moderator_access, get_access_level_by_name
 from ..database.users import Users
 from ..database.companies import Companies
 from ..database.accessLevels import AccessLevels
@@ -86,12 +86,12 @@ def profile(current_user, session):
         mod = [{
             'company_id': x.companies.IdCompany,
             'company_name': x.companies.Name
-        } for x in user.user_roles if x.access_levels.AccessLevel == mod_access_level]
+        } for x in user.user_roles if x.access_levels == mod_access_level]
         comp_owner_access_level = get_access_level_by_name(session, "Company Owner")
         comp_owner = [{
             'company_id': x.companies.IdCompany,
             'company_name': x.companies.Name
-        } for x in user.user_roles if x.access_levels.AccessLevel == comp_owner_access_level]
+        } for x in user.user_roles if x.access_levels == comp_owner_access_level]
         user_info = {
             "user_id": user.IdUser,
             "login": user.LoginUser,
@@ -198,3 +198,34 @@ def register():
         return jsonify({'message': 'Registration failed'}), 500
     finally:
         session.close()
+
+
+@app.get('/user/search')
+@token_required
+@company_owner_level
+@after_token_required
+def search_users(user, session):
+    """
+    Searches for users based on their email.
+
+    Accepts a query parameter 's' containing the search string.
+    Returns a JSON array of user objects matching the search string.
+    Returns an empty array if no users are found.
+    Returns a 400 Bad Request if the 's' parameter is missing.
+    Returns a 500 Internal Server Error on database errors.
+    """
+    search_string = request.args.get('s')
+
+    if not search_string:
+        return jsonify([{}])
+
+    try:
+        users = session.query(Users).filter(Users.Email.like(f"%{search_string}%")).all()
+
+        user_list = [{'user_id': user.IdUser, 'Email': user.Email} for user in users]
+        return jsonify(user_list), 200
+
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error searching users: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
