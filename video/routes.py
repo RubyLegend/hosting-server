@@ -7,7 +7,7 @@ import urllib
 import mimetypes
 from werkzeug.utils import secure_filename  # For secure filename
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
-from ..user.functions import token_required, company_owner_level
+from ..user.functions import token_required, after_token_required, company_owner_level
 from ..database.media import Media
 from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
@@ -24,7 +24,8 @@ app: Flask
 @app.post('/video/upload')
 @token_required  # Protect this endpoint
 @company_owner_level
-def upload_video(current_user, owned_companies):  # current_user is passed from decorator
+@after_token_required
+def upload_video(current_user, session):  # current_user is passed from decorator
     if 'file' not in request.files:
         app.logger.exception(f"Video: No Video part")
         return jsonify({'message': 'No video part'}), 400
@@ -76,12 +77,6 @@ def upload_video(current_user, owned_companies):  # current_user is passed from 
                 preview_path = os.path.join(app.config['PREVIEW_FOLDER'], preview_filename)
                 preview_path = get_unique_filepath_preview(preview_path, Session())
                 preview_file.save(preview_path)
-                # with open(preview_path, 'wb') as f:
-                #     while True:
-                #         chunk = preview_file.read(4096)  # Read in chunks
-                #         if not chunk:
-                #             break
-                #         f.write(chunk)
                 new_preview_file = True
             else:  # If preview file is not of allowed type
                 file_extension = os.path.splitext(filename)[1][1:].lower()
@@ -96,7 +91,6 @@ def upload_video(current_user, owned_companies):  # current_user is passed from 
             elif file_extension in ALLOWED_AUDIO_EXTENSIONS:
                 id_media_preview = 2
 
-        session = Session()
         try:
             if new_preview_file:
                 new_preview = MediaPreview(
@@ -138,8 +132,6 @@ def upload_video(current_user, owned_companies):  # current_user is passed from 
             os.remove(filepath)
             app.logger.exception(f"Database error during video upload: {e}")
             return jsonify({'message': 'Error saving to database'}), 500
-        finally:
-            session.close()
 
     except Exception as e:
         app.logger.exception(f"Error during video upload: {e}")
@@ -148,22 +140,21 @@ def upload_video(current_user, owned_companies):  # current_user is passed from 
 
 @app.route('/video/<int:id>/get')
 @token_required
-def get_video_link(current_user, owned_companies, id):
-
-    session = Session()
+@after_token_required
+def get_video_link(user, session, id):
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
             return jsonify({'message': 'Video not found'}), 404
 
         # View History Logic
-        view_history_entry = session.query(ViewHistory).filter_by(IdUser=current_user, IdMedia=id).first()
+        view_history_entry = session.query(ViewHistory).filter_by(IdUser=user.IdUser, IdMedia=id).first()
         if view_history_entry:
             view_history_entry.ViewTime = datetime.datetime.now()
             view_history_entry.ViewCount += 1
         else:
             new_view_history = ViewHistory(
-                IdUser=current_user,
+                IdUser=user.IdUser,
                 IdMedia=id,
                 ViewTime=datetime.datetime.now()
             )
@@ -182,7 +173,7 @@ def get_video_link(current_user, owned_companies, id):
         temp_link = generate_temporary_link(id, media.NameV)
 
         tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
-        likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+        likes, dislikes, user_rating_value = get_rating_counts(session, id, user.IdUser)
 
         media_info = {
             "name": media.NameV,
@@ -201,14 +192,12 @@ def get_video_link(current_user, owned_companies, id):
     except Exception as e:
         app.logger.exception(f"Error generating temporary link: {e}")
         return jsonify({'message': 'Error generating link'}), 500
-    finally:
-        session.close()
 
 
 @app.get('/video/<int:id>/preview')
 @token_required
-def get_video_preview(current_user, owned_companies, id):
-    session = Session()
+@after_token_required
+def get_video_preview(current_user, session, id):
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
@@ -226,13 +215,12 @@ def get_video_preview(current_user, owned_companies, id):
     except Exception as e:
         app.logger.exception(f"Error getting video preview: {e}")
         return jsonify({'message': 'Error getting video preview'}), 500
-    finally:
-        session.close()
 
 
 @app.post('/video/<int:id>/rating')
 @token_required
-def rate_video(current_user, owned_companies, id):
+@after_token_required
+def rate_video(current_user, session, id):
     data = request.get_json()
     rating_value = data.get('rating')  # 0, 1, or -1
 
@@ -242,19 +230,18 @@ def rate_video(current_user, owned_companies, id):
     if rating_value not in (0, 1, -1):
         return jsonify({'message': 'Invalid rating value. Must be 0, 1, or -1'}), 400
 
-    session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
             return jsonify({'message': 'Video not found'}), 404
 
-        existing_rating = session.query(Ratings).filter_by(IdUser=current_user, IdMedia=id).first()
+        existing_rating = session.query(Ratings).filter_by(IdUser=current_user.IdUser, IdMedia=id).first()
 
         if rating_value == 0:  # Remove rating
             if existing_rating:
                 session.delete(existing_rating)
                 session.commit()
-                likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+                likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user.IdUser)
                 return jsonify({
                     'message': 'Rating removed',
                     'likes': likes,
@@ -280,7 +267,7 @@ def rate_video(current_user, owned_companies, id):
             existing_rating.IdRatingType = rating_type.IdRatingType
             existing_rating.RatingTime = datetime.datetime.now()
             session.commit()
-            likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+            likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user.IdUser)
             return jsonify({
                 'message': 'Rating updated',
                 'likes': likes,
@@ -289,14 +276,14 @@ def rate_video(current_user, owned_companies, id):
             }), 201
 
         new_rating = Ratings(
-            IdUser=current_user,
+            IdUser=current_user.IdUser,
             IdMedia=id,
             IdRatingType=rating_type.IdRatingType,
             RatingTime=datetime.datetime.now()
         )
         session.add(new_rating)
         session.commit()
-        likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user)
+        likes, dislikes, user_rating_value = get_rating_counts(session, id, current_user.IdUser)
         return jsonify({
             'message': 'Rating added',
             'likes': likes,
@@ -312,8 +299,6 @@ def rate_video(current_user, owned_companies, id):
         session.rollback()
         app.logger.exception(f"Error adding/updating rating: {e}")
         return jsonify({'message': 'Error adding/updating rating'}), 500
-    finally:
-        session.close()
 
 
 @app.route('/stream/<link_id>/<filename>') # Added filename parameter
@@ -368,8 +353,8 @@ def stream_video_from_link(link_id, filename):
 
 @app.get('/video')
 @token_required
-def get_all_videos(current_user, owned_companies):
-    session = Session()
+@after_token_required
+def get_all_videos(current_user, session):
     try:
         videos = session.query(Media).all()
         video_list = []
@@ -387,5 +372,3 @@ def get_all_videos(current_user, owned_companies):
     except Exception as e:
         app.logger.exception(f"Error retrieving videos: {e}")
         return jsonify({'message': 'Error retrieving videos'}), 500
-    finally:
-        session.close()

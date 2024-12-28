@@ -5,16 +5,15 @@ from ..database.companies import Companies
 from ..database.subscribers import Subscribers
 from ..database.media import Media
 from .. import app, Session
-from ..user.functions import token_required
+from ..user.functions import token_required, after_token_required
 
 app: Flask
 
 
 @app.get('/company/<int:id>')
 @token_required
-def get_company_info(current_user, owned_companies, id):
-
-    session = Session()
+@after_token_required
+def get_company_info(current_user, session, id):
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -23,7 +22,7 @@ def get_company_info(current_user, owned_companies, id):
         # Count subscribers
         subscriber_count = session.query(func.count(Subscribers.IdSubscriber)).filter(Subscribers.IdCompany == id).scalar() or 0
         is_subscribed = False
-        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user, IdCompany=id).first()
+        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user.IdUser, IdCompany=id).first()
         if existing_subscription:
             is_subscribed = True
 
@@ -44,14 +43,12 @@ def get_company_info(current_user, owned_companies, id):
     except Exception as e:
         app.logger.exception(f"Error getting company info: {e}")
         return jsonify({'message': 'Error getting company info'}), 500
-    finally:
-        session.close()
 
 
 @app.get('/company/<int:id>/logo')
 @token_required
-def get_company_preview(current_user, owned_companies, id):
-    session = Session()
+@after_token_required
+def get_company_preview(current_user, session, id):
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -69,27 +66,25 @@ def get_company_preview(current_user, owned_companies, id):
     except Exception as e:
         app.logger.exception(f"Error getting logo: {e}")
         return jsonify({'message': 'Error getting logo'}), 500
-    finally:
-        session.close()
 
 
 @app.post('/company/<int:id>/subscribe')
 @token_required
-def subscribe_to_company(current_user, owned_companies, id):
-    session = Session()
+@after_token_required
+def subscribe_to_company(current_user, session, id):
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
             return jsonify({'message': 'Company not found'}), 404
 
         subscriber_count = session.query(func.count(Subscribers.IdSubscriber)).filter(Subscribers.IdCompany == id).scalar() or 0
-        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user, IdCompany=id).first()
+        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user.IdUser, IdCompany=id).first()
         if existing_subscription:
             return jsonify({'message': 'Already subscribed',
                             "is_subscribed": True,
                             "subscribers": subscriber_count}), 200
 
-        new_subscription = Subscribers(IdUser=current_user, IdCompany=id)
+        new_subscription = Subscribers(IdUser=current_user.IdUser, IdCompany=id)
         session.add(new_subscription)
         session.commit()
         return jsonify({'message': 'Subscribed successfully',
@@ -104,21 +99,19 @@ def subscribe_to_company(current_user, owned_companies, id):
         session.rollback()
         app.logger.exception(f"Error subscribing to company: {e}")
         return jsonify({'message': 'Error subscribing to company'}), 500
-    finally:
-        session.close()
 
 
 @app.post('/company/<int:id>/unsubscribe')
 @token_required
-def unsubscribe_from_company(current_user, owned_companies, id):
-    session = Session()
+@after_token_required
+def unsubscribe_from_company(current_user, session, id):
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
             return jsonify({'message': 'Company not found'}), 404
 
         subscriber_count = session.query(func.count(Subscribers.IdSubscriber)).filter(Subscribers.IdCompany == id).scalar() or 0
-        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user, IdCompany=id).first()
+        existing_subscription = session.query(Subscribers).filter_by(IdUser=current_user.IdUser, IdCompany=id).first()
         if not existing_subscription:
             return jsonify({'message': 'Not subscribed',
                             "is_subscribed": False,
@@ -138,14 +131,12 @@ def unsubscribe_from_company(current_user, owned_companies, id):
         session.rollback()
         app.logger.exception(f"Error unsubscribing from company: {e}")
         return jsonify({'message': 'Error unsubscribing from company'}), 500
-    finally:
-        session.close()
 
 
 @app.get('/company/<int:id>/videos')
 @token_required
-def get_company_videos(currrent_user, owned_companies, id):
-    session = Session()
+@after_token_required
+def get_company_videos(currrent_user, session, id):
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -172,5 +163,3 @@ def get_company_videos(currrent_user, owned_companies, id):
     except Exception as e:
         app.logger.exception(f"Error getting company videos: {e}")
         return jsonify({'message': 'Error getting company videos'}), 500
-    finally:
-        session.close()

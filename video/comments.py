@@ -4,14 +4,14 @@ from ..database.comments import Comments
 from ..database.media import Media
 from ..database.users import Users
 from .. import app, Session
-from ..user.functions import token_required, has_moderator_access
+from ..user.functions import token_required, after_token_required, has_moderator_access
 from sqlalchemy import exc
 
 
 @app.get('/video/<int:v>/comments')
 @token_required
-def get_video_comments(current_user, owned_companies, v):
-    session = Session()
+@after_token_required
+def get_video_comments(current_user, session, v):
     try:
         media = session.query(Media).filter_by(IdMedia=v).first()
         if not media:
@@ -35,27 +35,25 @@ def get_video_comments(current_user, owned_companies, v):
     except Exception as e:
         app.logger.exception(f"Error retrieving comments: {e}")
         return jsonify({'message': 'Error retrieving comments'}), 500
-    finally:
-        session.close()
 
 
 @app.post('/video/<int:v>/comments')
 @token_required
-def add_video_comment(current_user, owned_companies, v):
+@after_token_required
+def add_video_comment(current_user, session, v):
     data = request.get_json()
     text_comment = data.get('message')
 
     if not text_comment:
         return jsonify({'message': 'Comment text is required'}), 400
 
-    session = Session()
     try:
         media = session.query(Media).filter_by(IdMedia=v).first()
         if not media:
             return jsonify({'message': 'Video not found'}), 404
 
         new_comment = Comments(
-            IdUser=current_user,
+            IdUser=current_user.IdUser,
             IdMedia=v,
             TextComment=text_comment,
             Date=datetime.now()
@@ -63,7 +61,7 @@ def add_video_comment(current_user, owned_companies, v):
         session.add(new_comment)
         session.flush()
 
-        user = session.query(Users).filter_by(IdUser=current_user).first()
+        user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
 
         session.commit()
         return jsonify({'message': 'Comment added successfully', 
@@ -79,13 +77,12 @@ def add_video_comment(current_user, owned_companies, v):
         session.rollback()
         app.logger.exception(f"Error adding comment: {e}")
         return jsonify({'message': 'Error adding comment'}), 500
-    finally:
-        session.close()
 
 
 @app.delete('/comments/<int:comment_id>')
 @token_required
-def delete_video_comment(current_user, owned_companies, comment_id):
+@after_token_required
+def delete_video_comment(current_user, session, comment_id):
     if not comment_id:
         return jsonify({'message': 'Comment ID is required'}), 400
 
@@ -94,13 +91,12 @@ def delete_video_comment(current_user, owned_companies, comment_id):
     except ValueError:
         return jsonify({'message': 'Invalid comment ID. Must be an integer'}), 400
 
-    session = Session()
     try:
         comment = session.query(Comments).filter_by(IdComment=comment_id).first()
         if not comment:
             return jsonify({'message': 'Comment not found'}), 404
 
-        if comment.IdUser != current_user and not has_moderator_access(current_user, session):
+        if comment.IdUser != current_user.IdUser and not has_moderator_access(current_user.IdUser, session):
             return jsonify({'message': 'You do not have permission to delete this comment'}), 403
 
         session.delete(comment)
@@ -115,5 +111,3 @@ def delete_video_comment(current_user, owned_companies, comment_id):
         session.rollback()
         app.logger.exception(f"Error deleting comment: {e}")
         return jsonify({'message': 'Error deleting comment'}), 500
-    finally:
-        session.close()

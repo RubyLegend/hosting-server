@@ -3,7 +3,7 @@ import datetime
 import bcrypt
 from sqlalchemy import exc
 from .. import app, redis_client, Session
-from .functions import generate_token, token_required
+from .functions import generate_token, token_required, after_token_required, has_admin_access, has_company_owner_access, has_moderator_access, get_access_level_by_name
 from ..database.users import Users
 from ..database.companies import Companies
 from ..database.accessLevels import AccessLevels
@@ -28,7 +28,18 @@ def login():
         user = session.query(Users).filter_by(LoginUser=username).first()
         if user and bcrypt.checkpw(password.encode('utf-8'), user.Password.encode('utf-8')):
             token = generate_token(user.IdUser)
-            return jsonify({'user_id': user.IdUser, 'token': token, 'message': "success"}), 200
+            is_admin = has_admin_access(user, session)
+            is_mod = has_moderator_access(user, session)
+            is_comp_owner = has_company_owner_access(user, session)
+            
+            return jsonify({
+                'user_id': user.IdUser, 
+                'token': token,
+                'is_admin': is_admin,
+                'is_mod': is_mod,
+                'is_comp_owner': is_comp_owner,
+                'message': "success"
+            }), 200
         return jsonify({'message': 'Invalid credentials'}), 401
     except Exception as e:
         app.logger.error(f"Error during login: {e}") # Log the full error
@@ -39,9 +50,10 @@ def login():
 
 @app.post("/profile/logout")
 @token_required
-def logout(current_user, owned_companies):
+@after_token_required
+def logout(current_user, session):
     token = request.headers['Authorization'].split(" ")[1]
-    redis_client.delete(f"user:{current_user}:token")
+    redis_client.delete(f"user:{current_user.IdUser}:token")
     redis_client.delete(f"token:{token}")
     return jsonify({'message': 'Logged out successfully'}), 200
 
@@ -53,28 +65,42 @@ def profile_redir():
 
 @app.get("/profile")
 @token_required
-def profile(current_user, owned_companies):
-    session = Session()
+@after_token_required
+def profile(current_user, session):
     try:
-        user = session.query(Users).filter_by(IdUser=current_user).first()
+        user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
         if not user:
             return jsonify({'message': 'User not found'}), 404  # Should not happen if token_required is working correctly
 
-        subscriptions = []
-        for subscription in user.subscribers:
-            company = session.query(Companies).filter_by(IdCompany=subscription.IdCompany).first()
-            if company: # Handle cases where company might have been deleted
-                subscriptions.append({
-                    "company_id": subscription.IdCompany,
-                    "company_name": company.Name
-                })
+        # subscriptions = []
+        # for subscription in user.subscribers:
+        #     company = session.query(Companies).filter_by(IdCompany=subscription.IdCompany).first()
+        #     if company: # Handle cases where company might have been deleted
+        #         subscriptions.append({
+        #             "company_id": subscription.IdCompany,
+        #             "company_name": company.Name
+        #         })
 
+        is_admin = has_admin_access(user, session)
+        mod_access_level = get_access_level_by_name(session, "Moderator")
+        mod = [{
+            'company_id': x.companies.IdCompany,
+            'company_name': x.companies.Name
+        } for x in user.user_roles if x.access_levels.AccessLevel == mod_access_level]
+        comp_owner_access_level = get_access_level_by_name(session, "Company Owner")
+        comp_owner = [{
+            'company_id': x.companies.IdCompany,
+            'company_name': x.companies.Name
+        } for x in user.user_roles if x.access_levels.AccessLevel == comp_owner_access_level]
         user_info = {
             "user_id": user.IdUser,
             "login": user.LoginUser,
             "name": user.NameUser,
             "surname": user.Surname,
-            "subscriptions": subscriptions
+            'is_admin': is_admin,
+            'mod': mod,
+            'comp_owner': comp_owner,
+            # "subscriptions": subscriptions
         }
 
         return jsonify(user_info), 200
@@ -85,16 +111,14 @@ def profile(current_user, owned_companies):
     except Exception as e:
         app.logger.exception(f"Error getting user profile: {e}")
         return jsonify({'message': 'Error getting user profile'}), 500
-    finally:
-        session.close()
 
 
 @app.get("/profile/subscriptions")
 @token_required
-def get_profile_subscriptions(current_user, owned_companies):
-    session = Session()
+@after_token_required
+def get_profile_subscriptions(current_user, session):
     try:
-        user = session.query(Users).filter_by(IdUser=current_user).first()
+        user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
         if not user:
             return jsonify({'message': 'User not found'}), 404  # Should not happen if token_required is working correctly
 
@@ -115,9 +139,6 @@ def get_profile_subscriptions(current_user, owned_companies):
     except Exception as e:
         app.logger.exception(f"Error getting user profile: {e}")
         return jsonify({'message': 'Error getting user profile'}), 500
-    finally:
-        session.close()
-
 
 
 @app.post('/profile/register')
