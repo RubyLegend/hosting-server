@@ -1,3 +1,4 @@
+from .users import *
 from flask import Flask, request, jsonify, redirect, url_for
 import datetime
 import bcrypt
@@ -19,7 +20,7 @@ def login():
 Logs a user into the application.
 ---
 tags:
-  - User
+  - User profile
 requestBody:
   required: true
   content:
@@ -27,7 +28,7 @@ requestBody:
       schema:
         type: object
         required:
-          - Username
+          - User profilename
           - password
         properties:
           username:
@@ -81,7 +82,7 @@ responses:
     session = Session()
     try:
         user = session.query(Users).filter_by(LoginUser=username).first()
-        if user and bcrypt.checkpw(password.encode('utf-8'), user.Password.encode('utf-8')):
+        if user and user.IsActive and bcrypt.checkpw(password.encode('utf-8'), user.Password.encode('utf-8')):
             token = generate_token(user.IdUser)
             is_admin = has_admin_access(user, session)
             is_mod = has_moderator_access(user, session)
@@ -111,7 +112,7 @@ def logout(current_user, session):
 Logs out a user from the application.
 ---
 tags:
-    - User
+    - User profile
 security:
   - bearerAuth: []
 responses:
@@ -147,7 +148,7 @@ def profile(current_user, session):
 Retrieves the profile information of the currently logged-in user.
 ---
 tags:
-    - User
+    - User profile
 security:
   - bearerAuth: []
 responses:
@@ -256,7 +257,7 @@ def get_profile_subscriptions(current_user, session):
 Retrieves a list of companies the currently logged-in user is subscribed to.
 ---
 tags:
-    - User
+    - User profile
 security:
   - bearerAuth: []
 responses:
@@ -310,7 +311,7 @@ def register():
 Registers a new user in the application.
 ---
 tags:
-    - User
+    - User profile
 requestBody:
   required: true
   content:
@@ -371,7 +372,6 @@ responses:
     patronymic = data.get('patronymic')
     birthday = data.get('birthday')
     registerTime = datetime.datetime.utcnow()
-    about = data.get('about')
     password = data.get('password')
     passwordAgain = data.get('passwordAgain')
 
@@ -388,7 +388,7 @@ responses:
 
     session = Session()
     try:
-        new_user = Users(Email=email, LoginUser=loginUser, NameUser=nameUser, Surname=surname, Patronymic=patronymic, Birthday=birthday, RegisterTime=registerTime, About=about, Password=hashed_password)
+        new_user = Users(Email=email, LoginUser=loginUser, NameUser=nameUser, Surname=surname, Patronymic=patronymic, Birthday=birthday, RegisterTime=registerTime, Password=hashed_password)
         session.add(new_user)
         session.commit()
         session.flush()
@@ -418,68 +418,3 @@ responses:
         return jsonify({'message': 'Registration failed'}), 500
     finally:
         session.close()
-
-
-@app.get('/user/search')
-@token_required
-@company_owner_level
-@after_token_required
-def search_users(user, session):
-    """
-Searches for users based on their email.
----
-tags:
-    - User
-security:
-  - bearerAuth: []
-parameters:
-  - in: query
-    name: s
-    type: string
-    description: The search string to filter users by email (case-insensitive substring match).
-responses:
-  200:
-    description: User search results. Returns an empty array if no users are found.
-    content:
-      application/json:
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              user_id:
-                type: integer
-                description: The ID of the matching user.
-              Email:
-                type: string
-                format: email
-                description: The email of the matching user.
-  400:
-    description: Bad request (search parameter "s" is missing).
-  500:
-    description: Internal server error during user search.
-"""
-    """
-    Searches for users based on their email.
-
-    Accepts a query parameter 's' containing the search string.
-    Returns a JSON array of user objects matching the search string.
-    Returns an empty array if no users are found.
-    Returns a 400 Bad Request if the 's' parameter is missing.
-    Returns a 500 Internal Server Error on database errors.
-    """
-    search_string = request.args.get('s')
-
-    if not search_string:
-        return jsonify([{}])
-
-    try:
-        users = session.query(Users).filter(Users.Email.like(f"%{search_string}%")).all()
-
-        user_list = [{'user_id': user.IdUser, 'Email': user.Email} for user in users]
-        return jsonify(user_list), 200
-
-    except Exception as e:
-        session.rollback()
-        app.logger.exception(f"Error searching users: {e}")
-        return jsonify({'message': 'Internal server error'}), 500

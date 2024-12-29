@@ -66,8 +66,12 @@ def token_required(f):
                     return jsonify({'message': 'Token is invalid!'}), 401
 
                 # Latest auth token
-                current_auth_token = redis_client.get(f"user:{user_id}:token").decode("utf-8")
-                if current_auth_token != token:
+                current_auth_token = redis_client.get(f"user:{user_id}:token")
+                if current_auth_token:
+                    current_auth_token = current_auth_token.decode('utf-8')
+                else:
+                    return jsonify({'message': 'Token has expired!'}), 401
+                if current_auth_token is not None and current_auth_token != token:
                     # If tokens mismatch - then we have second authentication
                     # Invalidating last one
                     redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), "INVALID")
@@ -78,7 +82,7 @@ def token_required(f):
                     data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
                     user_id = data['user_id']
                     user = session.query(Users).filter_by(IdUser=user_id).first() # Retrieve user object
-                    if not user:
+                    if not user or not user.IsActive:
                         return jsonify({'message': 'User not found'}), 401
 
                     redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=60), token)
@@ -120,6 +124,20 @@ def admin_level(f):
             app.logger.exception(f"Error checking admin rights: {e}")
             return jsonify({'message': 'Error checking rights'}), 500
     return decorated_function
+
+
+def user_or_admin_required(f):
+    @wraps(f)
+    def decorated_function(user, session, *args, **kwargs):
+        user_id_to_update = kwargs.get('id')
+
+        if user.IdUser != user_id_to_update and not user_has_access_level(user, get_access_level_by_name(session, "Admin"), session):
+            return jsonify({'message': 'Forbidden. You can only access your own data or request for admin access.'}), 403
+
+        return f(user, session, *args, **kwargs)
+    return decorated_function
+
+
 
 def moderator_level(f):
     @wraps(f)

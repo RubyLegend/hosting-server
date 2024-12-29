@@ -14,8 +14,8 @@ class Users(Base):
     Patronymic = Column(String(255))
     Birthday = Column(DateTime)
     RegisterTime = Column(TIMESTAMP)
-    About = Column(String(255))
     Password = Column(String(255), nullable=False)
+    IsActive = Column(Boolean, nullable=False, default=True)
 
     ratings = relationship("Ratings", back_populates="users")
     comments = relationship("Comments", back_populates="users")

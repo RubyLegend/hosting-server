@@ -25,7 +25,6 @@ create table Users (
   Patronymic varchar(255),
   Birthday datetime,
   RegisterTime timestamp,
-  About varchar(255),
   Password varchar(255) not null
 );
 
@@ -40,7 +39,6 @@ create table Companies(
   IdCompany int not null primary key auto_increment,
   Name varchar(255) not null,
   About text(65535),
-  Owner varchar(255),
   IdCompanyLogo int not null default 1,
   foreign key(IdCompanyLogo) references CompanyLogo(IdCompanyLogo)
 );
