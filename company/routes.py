@@ -10,9 +10,114 @@ from ..database.userRoles import UserRoles
 from ..database.logos import CompanyLogo
 from .. import app
 from werkzeug.utils import secure_filename  # For secure filename
-from ..user.functions import company_owner_level, token_required, after_token_required, get_access_level_by_name
+from ..user.functions import company_owner_level, admin_level, token_required, after_token_required, get_access_level_by_name
 
 app: Flask
+
+
+@app.post('/company')
+@token_required
+@admin_level
+@after_token_required
+def create_company(user, session):
+    """
+    Creates a new company (Admin only).
+
+    ---
+    security:
+      - bearerAuth: []
+    tags:
+      - Company
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+                required: true
+                description: The name of the new company.
+              about:
+                type: string
+                description: Information about the company (optional).
+              logo:
+                type: string
+                format: binary
+                description: The company logo image (optional).
+    responses:
+      201:
+        description: Company created successfully. Returns the ID of the new company.
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        id:
+                            type: integer
+                            description: Id of newly created company
+                        message:
+                            type: string
+                            description: Status message
+      400:
+        description: Bad request (missing name or invalid image type).
+      403:
+        description: Forbidden. Admin access required.
+      500:
+        description: Internal server error.
+    """
+
+    try:
+        if request.form:
+            try:
+                data = json.loads(list(request.form.values())[0])
+                name = data.get('name')
+                about = data.get('about')
+            except (json.JSONDecodeError, IndexError):
+                return jsonify({'message': 'Invalid JSON data in form'}), 400
+        else:
+            return jsonify({'message': 'No data provided'}), 400
+
+        if not name:
+            return jsonify({'message': 'Company name is required'}), 400
+
+        if not about:
+            new_company = Companies(Name=name)
+        else:
+            new_company = Companies(Name=name, About=about)
+        session.add(new_company)
+        session.flush() # Get the new company's ID immediately
+        session.commit()
+
+        if 'logo' in request.files:
+            image_file = request.files['logo']
+            if image_file.filename != '' and allowed_logo_file(image_file.filename):
+                image_filename = secure_filename(image_file.filename)
+                image_path = os.path.join(app.config['LOGO_FOLDER'], image_filename)
+                image_path = get_unique_filepath_logo(image_path, session)
+
+                image_file.save(image_path)
+
+                new_logo = CompanyLogo(LogoPath=image_path)
+                session.add(new_logo)
+                session.commit()
+                session.flush()
+
+                new_company.IdCompanyLogo = new_logo.IdCompanyLogo
+                session.commit()
+            else:
+                session.rollback()
+                session.delete(new_company)
+                session.commit()
+                return jsonify({'message': 'Invalid image file type'}), 400
+
+        return jsonify({'id': new_company.IdCompany, 'message': "success"}), 201
+
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error creating company: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
 
 
 @app.get('/company/<int:id>')
@@ -82,7 +187,6 @@ responses:
             "id": company.IdCompany,
             "name": company.Name,
             "about": company.About,
-            "owner": company.Owner if company.Owner else "Not set",
             "subscribers": subscriber_count,
             "is_subscribed": is_subscribed
         }

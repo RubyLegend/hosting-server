@@ -164,6 +164,8 @@ def company_owner_level(f):
             return jsonify({'message': 'Invalid company id'}), 400
 
         for role in user.user_roles: # Use user.user_roles
+            if role.access_levels.AccessName == "Admin":
+                return f(user, session, *args, **kwargs)
             if role.IdCompany == company_id and role.access_levels.AccessName == "Company Owner":
                 return f(user, session, *args, **kwargs)
         return jsonify({'message': 'You are not the owner of this company'}), 403

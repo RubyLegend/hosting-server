@@ -9,8 +9,7 @@ class Companies(Base):
     IdCompany = Column(Integer, primary_key=True, nullable=False, autoincrement="auto")
     Name = Column(VARCHAR(255), nullable=False)
     About = Column(TEXT(65535))
-    Owner = Column(VARCHAR(255))
-    IdCompanyLogo = Column(Integer, ForeignKey("CompanyLogo.IdCompanyLogo"))
+    IdCompanyLogo = Column(Integer, ForeignKey("CompanyLogo.IdCompanyLogo"), default=1)
 
     media = relationship("Media", back_populates="companies")
     user_roles = relationship("UserRoles", back_populates="companies")
