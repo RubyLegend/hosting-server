@@ -19,6 +19,53 @@ app: Flask
 @token_required
 @after_token_required
 def get_company_info(current_user, session, id):
+    """
+Retrieves information about a specific company.
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company to retrieve information for.
+responses:
+  200:
+    description: Company information retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id:
+              type: integer
+              description: The ID of the company.
+            name:
+              type: string
+              description: The name of the company.
+            about:
+              type: string
+              description: The description or information about the company (optional).
+            owner:
+              type: string
+              description: The name of the company owner (if available).
+            subscribers:
+              type: integer
+              description: The number of users subscribed to the company.
+            is_subscribed:
+              type: boolean
+              description: Indicates if the current user is subscribed to the company.
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Database error getting company info.
+      - Error getting company info.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -56,16 +103,59 @@ def get_company_info(current_user, session, id):
 @after_token_required
 def update_company(user, session, id):
     """
-    Updates a company's information (name, description, and/or image).
+Updates a company's information (name, description, and/or image).
 
-    Receives a multipart form data. The JSON data (name, description) is expected in the first part of the form.
-    The image file (optional) is expected in the 'image' part of the form.
+Receives a multipart form data. The JSON data (name, description) is expected in the first part of the form.
+The image file (optional) is expected in the 'image' part of the form.
 
-    Returns a 400 Bad Request if the request data is invalid.
-    Returns a 404 Not Found if the company is not found.
-    Returns a 403 Forbidden if the current user is not an admin.
-    Returns a 500 Internal Server Error on database errors.
-    """
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the company is not found.
+Returns a 403 Forbidden if the current user is not an admin.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+requestBody:
+  required: true
+  content:
+    multipart/form-data:
+      schema:
+        type: object
+        properties:
+          name:
+            type: string
+            description: The company name (optional).
+          about:
+            type: string
+            description: The company description (optional).
+          image:
+            type: string
+            format: binary
+            description: The company logo image (optional, multipart form data).
+            format: binary
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company to update.
+responses:
+  200:
+    description: Company updated successfully.
+  400:
+    description: 
+      - Bad request (invalid JSON data in form, no selected image file, or invalid image file type).
+  403:
+    description: Forbidden. User is not authorized to update the company (requires company owner level access).
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Database error updating company.
+      - Error updating company.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -135,6 +225,31 @@ def update_company(user, session, id):
 @token_required
 @after_token_required
 def get_company_preview(current_user, session, id):
+    """
+Retrieves and serves a company's logo preview image (if available).
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to retrieve the logo preview.
+responses:
+  200:
+    description: Company logo preview image served successfully.
+  404:
+    description: 
+      - Company not found.
+      - Logo file not found.
+      - No logo available for the company.
+  500:
+    description: Error getting logo.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -160,12 +275,45 @@ def get_company_preview(current_user, session, id):
 @after_token_required
 def get_company_moderators(user, session, id):
     """
-    Retrieves a list of moderators for a given company.
+Retrieves a list of moderators for a specific company.
 
-    Returns a JSON array of moderator objects, each containing the moderator's ID and email.
-    Returns a 404 Not Found if the company does not exist.
-    Returns a 500 Internal Server Error on database errors.
-    """
+Returns a JSON array of moderator objects, each containing the moderator's ID and email.
+Returns a 404 Not Found if the company does not exist.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to retrieve moderators.
+responses:
+  200:
+    description: List of company moderators retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+                description: The ID of the user who is a moderator for the company.
+              Email:
+                type: string
+                description: The email address of the user who is a moderator for the company.
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Internal server error.
+      - Error retrieving company moderators.
+"""
     try:
         # Check if the company exists
         company = session.query(Companies).filter_by(IdCompany=id).first()
@@ -196,15 +344,46 @@ def get_company_moderators(user, session, id):
 @after_token_required
 def update_company_moderators(user, session, id, user_id):
     """
-    Adds the moderators for a given company.
+Updates the moderator status (add or remove) for a specific user in a company.
 
-    Receives a JSON array of actions, where each action specifies a user ID and an action ('add' or 'remove').
-    Returns a 400 Bad Request if the request data is invalid.
-    Returns a 404 Not Found if the company or a user is not found.
-    Returns a 403 Forbidden if the current user is not an admin.
-    Returns a 500 Internal Server Error on database errors.
-    """
-
+Receives a JSON array of actions, where each action specifies a user ID and an action ('add' or 'remove').
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the company or a user is not found.
+Returns a 403 Forbidden if the current user is not an admin.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to update moderators.
+  - in: path
+    name: user_id
+    type: integer
+    required: true
+    description: The ID of the user whose moderator status needs to be updated.
+responses:
+  200:
+    description: Moderators updated successfully.
+  400:
+    description: 
+      - Bad request (invalid JSON data or user cannot modify themselves).
+  403:
+    description: Forbidden. User is not authorized to manage moderators (requires company owner level access).
+  404:
+    description: 
+      - Company not found.
+      - User not found.
+  500:
+    description: 
+      - Internal server error.
+      - Database error updating moderators.
+"""
     if user.IdUser == user_id:
         return jsonify("Cannot modify yourself, otherwise you will lose access."), 403
 
@@ -246,14 +425,47 @@ def update_company_moderators(user, session, id, user_id):
 @after_token_required
 def delete_company_moderators(user, session, id):
     """
-    Adds the moderators for a given company.
+Removes moderators from a company.
 
-    Receives a JSON array of actions, where each action specifies a user ID and an action ('add' or 'remove').
-    Returns a 400 Bad Request if the request data is invalid.
-    Returns a 404 Not Found if the company or a user is not found.
-    Returns a 403 Forbidden if the current user is not an admin.
-    Returns a 500 Internal Server Error on database errors.
-    """
+Receives a JSON array of actions, where each action specifies a user ID and an action ('add' or 'remove').
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the company or a user is not found.
+Returns a 403 Forbidden if the current user is not an admin.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to remove moderators.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: array
+        items:
+          type: integer
+          description: The ID of the user to remove as a moderator.
+responses:
+  200:
+    description: Moderators updated successfully.
+  400:
+    description: Invalid request data. Expected a JSON array.
+  403:
+    description: Forbidden. User is not authorized to manage moderators (requires company owner level access).
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Internal server error.
+      - Database error updating moderators.
+"""
 
     try:
         data = request.get_json()
@@ -294,6 +506,48 @@ def delete_company_moderators(user, session, id):
 @token_required
 @after_token_required
 def subscribe_to_company(current_user, session, id):
+    """
+Subscribes the current user to a company.
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company to subscribe to.
+responses:
+  200:
+    description: 
+      - User already subscribed (includes current subscriber count).
+  201:
+    description: 
+      - Subscription successful (includes current subscriber count).
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Subscription message.
+            is_subscribed:
+              type: boolean
+              description: Indicates if the user is currently subscribed.
+            subscribers:
+              type: integer
+              description: The total number of company subscribers.
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Database integrity error.
+      - Error subscribing to company.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -327,6 +581,48 @@ def subscribe_to_company(current_user, session, id):
 @token_required
 @after_token_required
 def unsubscribe_from_company(current_user, session, id):
+    """
+Unsubscribes the current user from a company.
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company to unsubscribe from.
+responses:
+  200:
+    description: 
+      - User not subscribed (includes current subscriber count).
+  201:
+    description: 
+      - Unsubscribed successfully (includes current subscriber count).
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Unsubscribe message.
+            is_subscribed:
+              type: boolean
+              description: Indicates if the user is currently subscribed.
+            subscribers:
+              type: integer
+              description: The total number of company subscribers.
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Database integrity error.
+      - Error unsubscribing from company.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
@@ -359,6 +655,62 @@ def unsubscribe_from_company(current_user, session, id):
 @token_required
 @after_token_required
 def get_company_videos(currrent_user, session, id):
+    """
+Retrieves a list of videos belonging to a specific company.
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company to retrieve videos from.
+responses:
+  200:
+    description: List of company videos retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: The ID of the video.
+              name:
+                type: string
+                description: The name of the video.
+              description:
+                type: string
+                description: The description of the video.
+              upload_time:
+                type: string
+                format: date-time
+                nullable: true
+                description: The upload time of the video in ISO 8601 format.
+              tags:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      description: The ID of the tag.
+                    name:
+                      type: string
+                      description: The name of the tag.
+  404:
+    description: Company not found.
+  500:
+    description:
+      - Database error getting company videos.
+      - Error getting company videos.
+"""
     try:
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:

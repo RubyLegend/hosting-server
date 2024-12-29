@@ -16,7 +16,6 @@ class Users(Base):
     RegisterTime = Column(TIMESTAMP)
     About = Column(String(255))
     Password = Column(String(255), nullable=False)
-    IsAdmin = Column(Boolean, default=False)
 
     ratings = relationship("Ratings", back_populates="users")
     comments = relationship("Comments", back_populates="users")

@@ -26,6 +26,49 @@ app: Flask
 @company_owner_level
 @after_token_required
 def upload_video(current_user, session):  # current_user is passed from decorator
+    """
+Uploads a video to the application.
+---
+tags:
+  - Video
+security:
+  - bearerAuth: []
+requestBody:
+  required: true
+  content:
+    multipart/form-data:
+      schema:
+        type: object
+        properties:
+          file:
+            type: string
+            description: The video file to upload. (form-data)
+            format: binary
+          preview:
+            type: string
+            description: The preview image for the video (optional, form-data).
+            format: binary
+          name:
+            type: string
+            description: The name of the video. (form-data)
+          description:
+            type: string
+            description: A description of the video. (form-data)
+          idCompany:
+            type: integer
+            description: The ID of the company the video belongs to. (form-data)
+          tags:
+            type: string
+            description: A comma-separated list of tag IDs to associate with the video. (form-data)
+responses:
+  201:
+    description: Video uploaded successfully.
+  400:
+    description: Bad request (missing video file, missing video name, invalid file type, or invalid tag).
+  500:
+    description: Internal server error during video upload.
+"""
+
     if 'file' not in request.files:
         app.logger.exception(f"Video: No Video part")
         return jsonify({'message': 'No video part'}), 400
@@ -144,15 +187,62 @@ def upload_video(current_user, session):  # current_user is passed from decorato
 @after_token_required
 def update_video(user, session, id):
     """
-    Updates a video's information (name, description, tags, and/or preview).
+Updates a video's information (name, description, tags, and/or preview).
 
-    Receives multipart form data. The JSON data (name, description, tags) is expected in the first part of the form.
-    The preview image file (optional) is expected in the 'preview' part of the form.
+Receives multipart form data. The JSON data (name, description, tags) is expected in the first part of the form.
+The preview image file (optional) is expected in the 'preview' part of the form.
 
-    Returns a 400 Bad Request if the request data is invalid.
-    Returns a 404 Not Found if the video is not found.
-    Returns a 500 Internal Server Error on database errors.
-    """
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the video is not found.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the video to update.
+requestBody:
+  required: false  # Because preview is optional
+  content:
+    multipart/form-data:
+      schema:
+        type: object
+        properties:
+          name:
+            type: string
+            description: The updated name for the video.
+          description:
+            type: string
+            description: The updated description for the video.
+          tags:
+            type: string
+            description: A comma-separated list of tag IDs to associate with the video.
+          preview:
+            type: string
+            description: The updated preview image for the video (optional, form-data).
+            format: binary
+      examples:
+        example-update-name-description:
+          name: My Updated Video Title
+          description: This is an updated description for the video.
+        example-update-tags:
+          tags: "123, 456"  # Example comma-separated tag IDs
+
+responses:
+  200:
+    description: Video updated successfully.
+  400:
+    description: Bad request (video not found, invalid JSON data, invalid tag format, or invalid preview file type).
+  404:
+    description: Video not found.
+  500:
+    description: Internal server error during video update.
+"""
     try:
         video = session.query(Media).filter_by(IdMedia=id).first()
         if not video:
@@ -242,11 +332,29 @@ def update_video(user, session, id):
 @after_token_required
 def delete_video(user, session, id):
     """
-    Deletes a video and its associated data (preview, tags).
+Deletes a video and its associated data (preview, tags, comments, ratings, view history).
 
-    Returns a 404 Not Found if the video is not found.
-    Returns a 500 Internal Server Error on database errors.
-    """
+Returns a 404 Not Found if the video is not found.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the video to delete.
+responses:
+  200:
+    description: Video deleted successfully.
+  404:
+    description: Video not found.
+  500:
+    description: Internal server error during video deletion.
+"""
     try:
         video = session.query(Media).filter_by(IdMedia=id).first()
         if not video:
@@ -307,6 +415,83 @@ def delete_video(user, session, id):
 @token_required
 @after_token_required
 def get_video_link(user, session, id):
+    """
+Get temporary link to stream video
+
+Retrieves information about a video, including:
+
+  - Video name
+  - Company ID
+  - Description
+  - Temporary access link
+  - Tags associated with the video (list of objects with `id` and `name` properties)
+  - Like/dislike counts for the video
+  - User's rating for the video (if any)
+  - Total view count
+  - Unique viewer count
+
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the video to retrieve information for.
+responses:
+  200:
+    description: Video information retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The video name.
+            company_id:
+              type: integer
+              description: The ID of the company that owns the video.
+            description:
+              type: string
+              description: The video description.
+            temporary_link:
+              type: string
+              description: A temporary access link for the video.
+            tags:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    description: The ID of the tag.
+                  name:
+                    type: string
+                    description: The name of the tag.
+            likes:
+              type: integer
+              description: Total number of likes for the video.
+            dislikes:
+              type: integer
+              description: Total number of dislikes for the video.
+            user_rating:
+              type: integer  # Assuming user rating is also an integer
+              description: The user's rating for the video (if any).
+            total_views:
+              type: integer
+              description: Total number of times this video has been viewed.
+            unique_viewers:
+              type: integer
+              description: Number of unique users who have viewed this video.
+  404:
+    description: Video not found.
+  500:
+    description: Internal server error during video information retrieval.
+"""
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
@@ -364,6 +549,31 @@ def get_video_link(user, session, id):
 @token_required
 @after_token_required
 def get_video_preview(current_user, session, id):
+    """
+Retrieves the preview image for a video, if available.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the video for which to retrieve the preview.
+responses:
+  200:
+    description: Preview image retrieved successfully.
+    content:
+      image/*  # Assuming the preview image can be of various formats
+  404:
+    description: 
+      - Video not found.
+      - Preview file not found.
+  500:
+    description: Internal server error during preview retrieval.
+"""
     try:
         media = session.query(Media).filter_by(IdMedia=id).first()
         if not media:
@@ -387,6 +597,40 @@ def get_video_preview(current_user, session, id):
 @token_required
 @after_token_required
 def rate_video(current_user, session, id):
+    """
+Rates a video (like, dislike, or remove rating).
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          rating:
+            type: integer
+            description: "The rating value (0: remove rating, 1: like, -1: dislike)."
+responses:
+  200:
+    description: 
+      - Rating removed successfully (if rating is 0).
+      - Rating updated successfully (if existing rating is updated).
+  201:
+    description: Rating added successfully (if no prior rating exists).
+  400:
+    description: 
+      - Rating value is missing in the request body.
+      - Invalid rating value (must be 0, 1, or -1).
+      - Rating cannot be the same as the previous rating.
+  500:
+    description: 
+      - Database integrity error during rating.
+      - Error adding/updating rating.
+"""
     data = request.get_json()
     rating_value = data.get('rating')  # 0, 1, or -1
 
@@ -469,7 +713,40 @@ def rate_video(current_user, session, id):
 
 @app.route('/stream/<link_id>/<filename>') # Added filename parameter
 def stream_video_from_link(link_id, filename):
-    """Streams the video from a temporary link."""
+    """
+Streams a video from a temporary link.
+---
+tags:
+  - Video
+parameters:
+  - in: path
+    name: link_id
+    type: string
+    required: true
+    description: The unique identifier for the temporary link.
+  - in: path
+    name: filename
+    type: string
+    required: true
+    description: The original filename of the video encoded in the URL.
+responses:
+  206:
+    description: Partial video content streamed successfully.
+    headers:
+      Content-Type:
+        type: string
+        description: The MIME type of the video content.
+      Content-Range:
+        type: string
+        description: The byte range of the video content being streamed (e.g., bytes 0-1023/10240).
+  404:
+    description: 
+      - Invalid or expired link.
+      - Video not found.
+      - Video file not found on server.
+  500:
+    description: Error streaming video.
+"""
     media_id_bytes = redis_client.get(f"temp_link:{link_id}:{filename}")
     if not media_id_bytes:
         return jsonify({'message': 'Invalid or expired link'}), 404
@@ -521,6 +798,53 @@ def stream_video_from_link(link_id, filename):
 @token_required
 @after_token_required
 def get_all_videos(current_user, session):
+    """
+Retrieves a list of all videos.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Video
+responses:
+  200:
+    description: List of videos retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: The ID of the video.
+              name:
+                type: string
+                description: The name of the video.
+              description:
+                type: string
+                description: The description of the video.
+              upload_time:
+                type: string
+                format: date-time
+                description: The time the video was uploaded (in ISO 8601 format).
+              tags:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      description: The ID of the tag associated with the video.
+                    name:
+                      type: string
+                      description: The name of the tag.
+              company_id:
+                type: integer
+                description: The ID of the company that owns the video.
+  500:
+    description: Error retrieving videos.
+"""
     try:
         videos = session.query(Media).all()
         video_list = []

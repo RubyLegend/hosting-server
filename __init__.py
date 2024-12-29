@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from flask import Flask
+from flasgger import Swagger
 import redis
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -10,6 +11,32 @@ load_dotenv()
 
 app: Flask = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+swagger_template = {
+    "uiversion": 3,
+    "openapi": "3.0.3",
+    "swagger": "3.0.3",
+    "info": {
+        "title": "My Flask API",
+        "description": "API testing endpoint for Media Hosting application",
+        "version": "1.0.0"
+    },
+    "basePath": "/",  # base bash for blueprint registration
+    "schemes": [
+        "http",
+        "https"
+    ],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
+            }
+        },
+    }
+}
+
+swagger = Swagger(app, template=swagger_template)
 
 # Redis configuration
 redis_host = os.getenv("REDIS_HOST") or "localhost"

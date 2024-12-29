@@ -26,8 +26,7 @@ create table Users (
   Birthday datetime,
   RegisterTime timestamp,
   About varchar(255),
-  Password varchar(255) not null,
-  IsAdmin boolean default 0
+  Password varchar(255) not null
 );
 
 create table CompanyLogo(

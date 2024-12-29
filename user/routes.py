@@ -15,6 +15,61 @@ app: Flask
 
 @app.post("/profile/login")
 def login():
+    """
+Logs a user into the application.
+---
+tags:
+  - User
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required:
+          - Username
+          - password
+        properties:
+          username:
+            type: string
+            description: The user's login username.
+            example: "user"
+          password:
+            type: string
+            description: The user's password.
+            example: "password"
+responses:
+  200:
+    description: Login successful.
+    content:
+      application/json:
+        schema:
+          # $ref: "#/components/schemas/ProfileLoginResponse"
+          type: object
+          properties:
+            user_id:
+              type: integer
+              description: The ID of the logged-in user.
+            token:
+              type: string
+              description: The authentication token for the user.
+            is_admin:
+              type: boolean
+              description: Whether the user has admin privileges.
+            is_mod:
+              type: boolean
+              description: Whether the user has moderator privileges.
+            is_comp_owner:
+              type: boolean
+              description: Whether the user is a company owner.
+            message:
+              type: string
+              description: Success message.
+  401:
+    description: Invalid credentials or missing authorization header.
+  500:
+    description: Internal server error during login.
+"""
     auth = request.get_json()
 
     if not auth or not auth.get('username') or not auth.get('password'):
@@ -52,6 +107,27 @@ def login():
 @token_required
 @after_token_required
 def logout(current_user, session):
+    """
+Logs out a user from the application.
+---
+tags:
+    - User
+security:
+  - bearerAuth: []
+responses:
+  200:
+    description: Logout successful.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Logout success message.
+  401:
+    description: Unauthorized access (missing or invalid token).
+"""
     token = request.headers['Authorization'].split(" ")[1]
     redis_client.delete(f"user:{current_user.IdUser}:token")
     redis_client.delete(f"token:{token}")
@@ -67,6 +143,65 @@ def profile_redir():
 @token_required
 @after_token_required
 def profile(current_user, session):
+    """
+Retrieves the profile information of the currently logged-in user.
+---
+tags:
+    - User
+security:
+  - bearerAuth: []
+responses:
+  200:
+    description: User profile retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              description: The ID of the user.
+            login:
+              type: string
+              description: The user's login username.
+            name:
+              type: string
+              description: The user's first name.
+            surname:
+              type: string
+              description: The user's last name.
+            is_admin:
+              type: boolean
+              description: Whether the user has admin privileges.
+            mod:
+              type: array
+              description: List of companies the user moderates.
+              items:
+                type: object
+                properties:
+                  company_id:
+                    type: integer
+                    description: The ID of the moderated company.
+                  company_name:
+                    type: string
+                    description: The name of the moderated company.
+            comp_owner:
+              type: array
+              description: List of companies the user owns.
+              items:
+                type: object
+                properties:
+                  company_id:
+                    type: integer
+                    description: The ID of the owned company.
+                  company_name:
+                    type: string
+                    description: The name of the owned company.
+  404:
+    description: User not found (should not happen with proper token authorization).
+  500:
+    description: Internal server error while retrieving user profile.
+"""
     try:
         user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
         if not user:
@@ -117,6 +252,34 @@ def profile(current_user, session):
 @token_required
 @after_token_required
 def get_profile_subscriptions(current_user, session):
+    """
+Retrieves a list of companies the currently logged-in user is subscribed to.
+---
+tags:
+    - User
+security:
+  - bearerAuth: []
+responses:
+  200:
+    description: List of user subscriptions retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              company_id:
+                type: integer
+                description: The ID of the subscribed company.
+              company_name:
+                type: string
+                description: The name of the subscribed company.
+  404:
+    description: User not found (should not happen with proper token authorization).
+  500:
+    description: Internal server error while retrieving user subscriptions.
+"""
     try:
         user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
         if not user:
@@ -143,6 +306,63 @@ def get_profile_subscriptions(current_user, session):
 
 @app.post('/profile/register')
 def register():
+    """
+Registers a new user in the application.
+---
+tags:
+    - User
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          email:
+            type: string
+            format: email
+            description: The user's email address.
+          loginUser:
+            type: string
+            description: The user's login username.
+          nameUser:
+            type: string
+            description: The user's first name.
+          surname:
+            type: string
+            description: The user's last name.
+          patronymic:
+            type: string
+            description: The user's patronymic (middle name).
+          birthday:
+            type: string
+            format: date
+            description: The user's birthday (YYYY-MM-DD).
+          about:
+            type: string
+            description: A short description about the user.
+          password:
+            type: string
+            description: The user's password.
+          passwordAgain:
+            type: string
+            description: The user's password repeated for confirmation.
+responses:
+  201:
+    description: User registered successfully.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Registration success message.
+  400:
+    description: Bad request (missing required fields, passwords do not match, or username already exists).
+  500:
+    description: Internal server error during registration.
+"""
     data = request.get_json()
     email = data.get('email')
     loginUser = data.get('loginUser')
@@ -205,6 +425,40 @@ def register():
 @company_owner_level
 @after_token_required
 def search_users(user, session):
+    """
+Searches for users based on their email.
+---
+tags:
+    - User
+security:
+  - bearerAuth: []
+parameters:
+  - in: query
+    name: s
+    type: string
+    description: The search string to filter users by email (case-insensitive substring match).
+responses:
+  200:
+    description: User search results. Returns an empty array if no users are found.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+                description: The ID of the matching user.
+              Email:
+                type: string
+                format: email
+                description: The email of the matching user.
+  400:
+    description: Bad request (search parameter "s" is missing).
+  500:
+    description: Internal server error during user search.
+"""
     """
     Searches for users based on their email.
 
