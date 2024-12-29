@@ -471,8 +471,9 @@ requestBody:
   content:
     application/json:
       schema:
-        type: array
-        user_id:
+        type: object
+        properties:
+          id:
             type: integer
             description: The ID of the user whose owner status needs to be updated.
 responses:
@@ -719,8 +720,9 @@ requestBody:
   content:
     application/json:
       schema:
-        type: array
-        id:
+        type: object
+        properties:
+          id:
             type: integer
             description: The ID of the user whose moderator status needs to be updated.
 responses:
