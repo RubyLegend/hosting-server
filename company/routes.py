@@ -373,6 +373,254 @@ responses:
         return jsonify({'message': 'Error getting logo'}), 500
 
 
+@app.get('/company/<int:id>/owners')
+@token_required
+@company_owner_level
+@after_token_required
+def get_company_owners(user, session, id):
+    """
+Retrieves a list of owners for a specific company.
+
+Returns a JSON array of owner objects, each containing the owner's ID and email.
+Returns a 404 Not Found if the company does not exist.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to retrieve owners.
+responses:
+  200:
+    description: List of company owners retrieved successfully.
+    content:
+      application/json:
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: integer
+                description: The ID of the user who is an owner for the company.
+              Email:
+                type: string
+                description: The email address of the user who is an owner for the company.
+  404:
+    description: Company not found.
+  500:
+    description:
+      - Internal server error.
+      - Error retrieving company owners.
+"""
+    try:
+        # Check if the company exists
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        # Get the "Company Owner" access level ID
+        owner_level = get_access_level_by_name(session, "Company Owner")
+        if not owner_level:
+            app.logger.error("Company Owner Access Level not found in database")
+            return jsonify({'message': 'Internal server error'}), 500
+
+        users_in_company = company.user_roles
+
+        owners = [{'user_id': x.users.IdUser, 'Email': x.users.Email} for x in users_in_company if x.access_levels == owner_level]
+
+        return jsonify(owners), 200
+
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error retrieving company owners: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
+
+
+@app.post('/company/<int:id>/owners')
+@token_required
+@admin_level # Only admins can manage owners
+@after_token_required
+def update_company_owners(user, session, id):
+    """
+Updates the owner status (add or remove) for a specific user in a company.
+
+Receives a JSON, where specified one user ID, which will be added as owner.
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the company or a user is not found.
+Returns a 403 Forbidden if the current user is not an admin.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to update owners.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: array
+        user_id:
+            type: integer
+            description: The ID of the user whose owner status needs to be updated.
+responses:
+  200:
+    description: owners updated successfully.
+  400:
+    description: 
+      - Bad request (invalid JSON data or user cannot modify themselves).
+      - Bad request (user already have existing rights, that needs to be revoked).
+  403:
+    description: Forbidden. User is not authorized to manage owners (requires company owner level access).
+  404:
+    description: 
+      - Company not found.
+      - User not found.
+  500:
+    description: 
+      - Internal server error.
+      - Database error updating owners.
+"""
+    try:
+        data = request.get_json()
+        if not isinstance(data, object):
+            return jsonify({'message': 'Invalid request data. Expected a JSON object.'}), 400
+
+        owner_level = get_access_level_by_name(session, "Company Owner")
+        if not owner_level:
+            app.logger.error("Company Owner Access Level not found in database")
+            return jsonify({'message': 'Internal server error'}), 500
+
+        user_level = get_access_level_by_name(session, "User")
+        if not user_level:
+            app.logger.error("UserAccess Level not found in database")
+            return jsonify({'message': 'Internal server error'}), 500
+
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        user_id = data.get('id')
+
+        user_role = session.query(UserRoles).filter_by(IdUser=user_id, IdCompany=id).first()
+
+        if not user_role:
+            new_user_role = UserRoles(IdUser=user_id, IdCompany=id, IdAccessLevel=owner_level.IdAccessLevel)
+            session.add(new_user_role)
+        elif user_role.IdAccessLevel == user_level.IdAccessLevel:
+            user_role.IdAccessLevel = owner_level.IdAccessLevel
+            session.commit()
+        else:
+            return jsonify({"message": "Cannot change this user rights. Remove existing ones before modifying."}), 400
+
+        session.commit()
+        return jsonify({'message': 'owners updated successfully'}), 200
+
+    except exc.SQLAlchemyError as e:
+        session.rollback()
+        app.logger.exception(f"Database error updating owners: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error updating owners: {e}")
+        return jsonify({'message': 'Error updating owners'}), 500
+
+
+@app.delete('/company/<int:id>/owners')
+@token_required
+@admin_level # Only admins can manage owners
+@after_token_required
+def delete_company_owners(user, session, id):
+    """
+Removes owners from a company.
+
+Receives a JSON array of user IDs.
+Returns a 400 Bad Request if the request data is invalid.
+Returns a 404 Not Found if the company or a user is not found.
+Returns a 403 Forbidden if the current user is not an admin.
+Returns a 500 Internal Server Error on database errors.
+---
+security:
+  - bearerAuth: []
+tags:
+  - Company
+parameters:
+  - in: path
+    name: id
+    type: integer
+    required: true
+    description: The ID of the company for which to remove owners.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: array
+        items:
+          type: integer
+          description: The ID of the user to remove as a owner.
+responses:
+  200:
+    description: owners updated successfully.
+  400:
+    description: Invalid request data. Expected a JSON array.
+  403:
+    description: Forbidden. User is not authorized to manage owners (requires admin level access).
+  404:
+    description: Company not found.
+  500:
+    description: 
+      - Internal server error.
+      - Database error updating owners.
+"""
+
+    try:
+        data = request.get_json()
+        if not isinstance(data, list):
+            return jsonify({'message': 'Invalid request data. Expected a JSON array.'}), 400
+
+        owner_level = get_access_level_by_name(session, "Company Owner")
+        if not owner_level:
+            app.logger.error("Company Owner Access Level not found in database")
+            return jsonify({'message': 'Internal server error'}), 500
+
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        for item in data:
+            user_role = session.query(UserRoles).filter_by(IdUser=item, IdCompany=id).first()
+
+            if user_role and user_role.access_levels == owner_level:
+                session.delete(user_role)
+            else:
+                return jsonify({"message": "User does not have that role. No changes."}), 200
+
+        session.commit()
+        return jsonify({'message': 'Owners updated successfully'}), 200
+
+    except exc.SQLAlchemyError as e:
+        session.rollback()
+        app.logger.exception(f"Database error updating owners: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error updating moderators: {e}")
+        return jsonify({'message': 'Error updating moderators'}), 500
+
+
 @app.get('/company/<int:id>/moderators')
 @token_required
 @company_owner_level
@@ -442,15 +690,15 @@ responses:
         return jsonify({'message': 'Internal server error'}), 500
 
 
-@app.post('/company/<int:id>/moderators/<int:user_id>')
+@app.post('/company/<int:id>/moderators')
 @token_required
 @company_owner_level # Only admins can manage moderators
 @after_token_required
-def update_company_moderators(user, session, id, user_id):
+def update_company_moderators(user, session, id):
     """
 Updates the moderator status (add or remove) for a specific user in a company.
 
-Receives a JSON array of actions, where each action specifies a user ID and an action ('add' or 'remove').
+Receives a JSON, where specified one user ID, which will be added as moderator.
 Returns a 400 Bad Request if the request data is invalid.
 Returns a 404 Not Found if the company or a user is not found.
 Returns a 403 Forbidden if the current user is not an admin.
@@ -466,17 +714,22 @@ parameters:
     type: integer
     required: true
     description: The ID of the company for which to update moderators.
-  - in: path
-    name: user_id
-    type: integer
-    required: true
-    description: The ID of the user whose moderator status needs to be updated.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: array
+        id:
+            type: integer
+            description: The ID of the user whose moderator status needs to be updated.
 responses:
   200:
     description: Moderators updated successfully.
   400:
     description: 
       - Bad request (invalid JSON data or user cannot modify themselves).
+      - Bad request (user already have existing rights, that needs to be revoked).
   403:
     description: Forbidden. User is not authorized to manage moderators (requires company owner level access).
   404:
@@ -488,27 +741,41 @@ responses:
       - Internal server error.
       - Database error updating moderators.
 """
-    if user.IdUser == user_id:
-        return jsonify("Cannot modify yourself, otherwise you will lose access."), 403
-
     try:
+        data = request.get_json()
+        if not isinstance(data, object):
+            return jsonify({'message': 'Invalid request data. Expected a JSON object.'}), 400
+
         moderator_level = get_access_level_by_name(session, "Moderator")
         if not moderator_level:
             app.logger.error("Moderator Access Level not found in database")
+            return jsonify({'message': 'Internal server error'}), 500
+
+        user_level = get_access_level_by_name(session, "User")
+        if not moderator_level:
+            app.logger.error("User Access Level not found in database")
             return jsonify({'message': 'Internal server error'}), 500
 
         company = session.query(Companies).filter_by(IdCompany=id).first()
         if not company:
             return jsonify({'message': 'Company not found'}), 404
 
+        user_id = data.get('id')
+
+        if user.IdUser == user_id:
+            return jsonify("Cannot modify yourself, otherwise you will lose access."), 403
+
         user_role = session.query(UserRoles).filter_by(IdUser=user_id, IdCompany=id).first()
 
         if not user_role:
             new_user_role = UserRoles(IdUser=user_id, IdCompany=id, IdAccessLevel=moderator_level.IdAccessLevel)
             session.add(new_user_role)
-        else:
+        elif user_role.IdAccessLevel == user_level.IdAccessLevel:
             user_role.IdAccessLevel = moderator_level.IdAccessLevel
             session.commit()
+        else:
+            return jsonify({"message": "Cannot change this user rights. Remove existing ones before modifying."}), 400
+
 
         session.commit()
         return jsonify({'message': 'Moderators updated successfully'}), 200
