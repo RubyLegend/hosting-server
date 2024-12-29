@@ -12,7 +12,7 @@ from sqlalchemy import exc
 @app.get('/video/<int:v>/comments')
 @token_required
 @after_token_required
-def get_video_comments(current_user, session, v):
+def get_video_comments(user, session, v):
     """
 Retrieves all comments for a specific video.
 ---
@@ -54,6 +54,12 @@ responses:
                 format: date-time
                 nullable: true
                 description: The date and time the comment was posted (in ISO 8601 format).
+              can_delete:
+                type: boolean
+                description: Whether current user can delete this comment.
+              reported:
+                type: boolean
+                description: Whether this message is reported. This is for moderators only.
   404:
     description: Video not found.
   500:
@@ -66,15 +72,20 @@ responses:
 
         comments = session.query(Comments).filter_by(IdMedia=v).all()
 
+        has_weak_moderator = has_moderator_access(user, session)
+        has_strong_moderator = has_moderator_access(user, session, False)
+
         comment_list = []
         for comment in comments:
-            user = session.query(Users).filter_by(IdUser=comment.IdUser).first()
+            comment_user = session.query(Users).filter_by(IdUser=comment.IdUser).first()
             comment_list.append({
                 "id": comment.IdComment,
                 "user_id": comment.IdUser,
-                "user_login": user.NameUser + " " + user.Surname if user else None,
+                "user_login": comment_user.NameUser + " " + comment_user.Surname if user else None,
                 "text": comment.TextComment,
-                "date": comment.Date.isoformat() if comment.Date else None
+                "date": comment.Date.isoformat() if comment.Date else None,
+                "can_delete": has_weak_moderator or comment.IdUser == user.IdUser,
+                "reported": True if comment.reports and has_strong_moderator else False
             })
 
         return jsonify(comment_list), 200

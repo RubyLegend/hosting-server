@@ -106,10 +106,12 @@ def get_access_level_by_name(session, access_name):
     access_level_record = session.query(AccessLevels).filter_by(AccessName=access_name).first()
     return access_level_record if access_level_record else None
 
-def user_has_access_level(user, required_level, session):
+def user_has_access_level(user, required_level, session, weak_comparison=True):
     """Helper function to check if a user has at least the required access level."""
     for role in user.user_roles:  # Iterate through user's roles
-        if role.access_levels == required_level or role.access_levels.AccessLevel >= required_level.AccessLevel:
+        if role.access_levels == required_level:
+            return True
+        elif weak_comparison and role.access_levels.AccessLevel >= required_level.AccessLevel:
             return True
     return False
 
@@ -177,9 +179,9 @@ def has_admin_access(user, session):
     return user_has_access_level(user, get_access_level_by_name(session, "Admin"), session)
 
 
-def has_moderator_access(user, session):
+def has_moderator_access(user, session, weak_comparison=True):
     """Checks if the user has moderator or higher access."""
-    return user_has_access_level(user, get_access_level_by_name(session, "Moderator"), session)
+    return user_has_access_level(user, get_access_level_by_name(session, "Moderator"), session, weak_comparison)
 
 
 def has_company_owner_access(user, session):
