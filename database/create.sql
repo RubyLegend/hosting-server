@@ -10,6 +10,7 @@ drop table if exists Comments;
 drop table if exists ViewHistory;
 drop table if exists UserRoles;
 drop table if exists AccessLevels;
+drop table if exists Reports;
 drop table if exists Users;
 drop table if exists MediaTagsConnector;
 drop table if exists Tags;
@@ -67,6 +68,16 @@ create table Media(
   DescriptionV varchar(10000),
   UploadTime timestamp,
   VideoPath varchar(255) not null unique
+);
+
+create table Reports(
+  IdReport int not null primary key auto_increment,
+  ReportTime datetime not null,
+  IdComment int not null,
+  IdUser int not null,
+  ReportReason varchar(10000),
+  FOREIGN KEY(IdComment) REFERENCES Comments(IdComment),
+  FOREIGN KEY(IdUser) REFERENCES Users(IdUser)
 );
 
 create table RatingTypes(

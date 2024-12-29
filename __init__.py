@@ -59,7 +59,7 @@ Base = declarative_base()
 from .database import accessLevels, comments, companies, \
     media, mediaTagsConnector, ratings, ratingTypes, searchHistory, \
     subscribers, tags, userRoles, users, viewHistory, mediaPreview, \
-    logos
+    logos, reports
 Base.metadata.create_all(engine)
 
 # Configuration for uploads

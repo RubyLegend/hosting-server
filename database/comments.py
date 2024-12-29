@@ -14,3 +14,4 @@ class Comments(Base):
 
     users = relationship("Users", back_populates="comments")
     media = relationship("Media", back_populates="comments")
+    reports = relationship("Reports", back_populates="comments")

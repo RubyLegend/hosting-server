@@ -23,3 +23,4 @@ class Users(Base):
     search_history = relationship("SearchHistory", back_populates="users")
     user_roles = relationship("UserRoles", back_populates="users")
     subscribers = relationship("Subscribers", back_populates="users")
+    reports = relationship("Reports", back_populates="users")

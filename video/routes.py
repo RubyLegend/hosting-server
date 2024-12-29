@@ -6,6 +6,7 @@ import json
 import urllib
 import mimetypes
 from werkzeug.utils import secure_filename  # For secure filename
+from . import tags, comments, reports
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
 from ..user.functions import token_required, after_token_required, company_owner_level
 from ..database.media import Media

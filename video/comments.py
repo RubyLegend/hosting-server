@@ -3,6 +3,7 @@ from datetime import datetime
 from ..database.comments import Comments
 from ..database.media import Media
 from ..database.users import Users
+from ..database.reports import Reports
 from .. import app, Session
 from ..user.functions import token_required, after_token_required, has_moderator_access
 from sqlalchemy import exc
@@ -18,7 +19,7 @@ Retrieves all comments for a specific video.
 security:
   - bearerAuth: []
 tags:
-  - Video
+  - Comments
 parameters:
   - in: path
     name: v
@@ -93,7 +94,7 @@ Adds a new comment to a video.
 security:
   - bearerAuth: []
 tags:
-  - Video
+  - Comments
 requestBody:
   required: true
   content:
@@ -197,7 +198,7 @@ Deletes a specific comment.
 security:
   - bearerAuth: []
 tags:
-  - Video
+  - Comments
 parameters:
   - in: path
     name: comment_id
@@ -236,6 +237,11 @@ responses:
         if comment.IdUser != current_user.IdUser and not has_moderator_access(current_user.IdUser, session):
             return jsonify({'message': 'You do not have permission to delete this comment'}), 403
 
+        # Search for linked reports
+        reports = comment.reports
+        for report in reports:
+            session.delete(report)
+
         session.delete(comment)
         session.commit()
         return jsonify({'message': 'Comment deleted successfully'}), 200
@@ -248,3 +254,71 @@ responses:
         session.rollback()
         app.logger.exception(f"Error deleting comment: {e}")
         return jsonify({'message': 'Error deleting comment'}), 500
+
+
+@app.post('/comments/<int:id>/report')
+@token_required
+@after_token_required
+def report_comment(user, session, id):
+    """
+    Creates a new report for a comment.
+    ---
+    security:
+      - bearerAuth: []
+    tags:
+      - Reports
+    parameters:
+      - in: path
+        name: id
+        type: integer
+        required: true
+        description: The ID of the comment to report.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              report_reason:
+                type: string
+                required: true
+                description: The reason for reporting the comment.
+    responses:
+      201:
+        description: Report created successfully.
+      400:
+        description: Report reason is required.
+      404:
+        description: Comment not found.
+      500:
+        description: Internal server error.
+    """
+    try:
+        comment = session.query(Comments).filter_by(IdComment=id).first()
+        if not comment:
+            return jsonify({'message': 'Comment not found'}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'message': 'No data provided'}), 400
+        report_reason = data.get('report_reason')
+
+        if not report_reason:
+            report_reason = ""
+
+        new_report = Reports(
+            IdComment=id,
+            IdUser=user.IdUser,
+            ReportReason=report_reason,
+            ReportTime=datetime.now()
+        )
+        session.add(new_report)
+        session.commit()
+
+        return jsonify({'message': 'Report created successfully'}), 201
+
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error creating report: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
