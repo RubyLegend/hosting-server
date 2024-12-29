@@ -325,6 +325,103 @@ responses:
         return jsonify({'message': 'Error updating company'}), 500
 
 
+@app.delete('/company/<int:id>')
+@token_required
+@admin_level
+@after_token_required
+def delete_company(user, session, id):
+    """
+    Deletes a company and all associated data (videos, comments, user roles, etc.). (Admin only)
+
+    ---
+    security:
+      - bearerAuth: []
+    tags:
+      - Company
+    parameters:
+      - in: path
+        name: id
+        type: integer
+        required: true
+        description: The ID of the company to delete.
+    responses:
+      200:
+        description: Company and associated data deleted successfully.
+      404:
+        description: Company not found.
+      403:
+        description: Forbidden. Admin access required.
+      500:
+        description: Internal server error.
+    """
+    try:
+        company = session.query(Companies).filter_by(IdCompany=id).first()
+        if not company:
+            return jsonify({'message': 'Company not found'}), 404
+
+        # Delete related data (order is important to avoid foreign key issues)
+        # 1. Delete UserRoles
+        for role in company.user_roles:
+            session.delete(role)
+
+        # 2. Delete Comments
+        for video in company.media:
+            for comment in video.comments:
+                session.delete(comment)
+            # 3. Delete ratings
+            for rating in video.ratings:
+                session.delete(rating)
+            # 4. Delete views
+            for view in video.view_history:
+                session.delete(view)
+            # 5. Unlink tags
+            for tag in video.tags:
+                session.delete(tag)
+            # 6. Delete Videos and their previews
+            if video.preview.IdMediaPreview != 1 and video.preview.IdMediaPreview != 2:
+                try:
+                    os.remove(video.preview.PreviewPath)
+                except FileNotFoundError:
+                    pass # It is not critical if preview is not found
+                except Exception as e:
+                    app.logger.exception(f"Error while removing preview: {e}")
+            try:
+                os.remove(video.VideoPath)
+            except FileNotFoundError:
+                pass # It is not critical if video is not found
+            except Exception as e:
+                app.logger.exception(f"Error while removing video: {e}")
+            session.delete(video)
+
+        # 7. Delete Logo, but remove record of it after removing company
+        if company.companyLogo and company.companyLogo.IdCompanyLogo != 1:
+            try:
+                os.remove(company.companyLogo.LogoPath)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                app.logger.exception(f"Error while removing company logo: {e}")
+
+        # 8. Unlink subscribers
+        for subscriber in company.subscribers:
+            session.delete(subscriber)
+
+        # 9. Finally, delete the company itself
+        logo = company.companyLogo
+        session.refresh(company)
+        session.delete(company)
+        if logo.IdCompanyLogo != 1:
+            session.delete(logo)
+
+        session.commit()
+        return jsonify({'message': 'Company and associated data deleted successfully'}), 200
+
+    except Exception as e:
+        session.rollback()
+        app.logger.exception(f"Error deleting company: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
+
+
 @app.get('/company/<int:id>/logo')
 @token_required
 @after_token_required
@@ -364,7 +461,11 @@ responses:
             if os.path.exists(preview_path):
                 return send_from_directory(os.path.dirname(preview_path), os.path.basename(preview_path))
             else:
-                return jsonify({'message': 'Logo file not found'}), 404
+                company.IdCompanyLogo = 1
+                session.commit()
+                session.flush()
+                preview_path = company.companyLogo.LogoPath
+                return send_from_directory(os.path.dirname(preview_path), os.path.basename(preview_path))
         else:
             return jsonify({'message': 'No logo available'}), 404
 
