@@ -138,6 +138,171 @@ def upload_video(current_user, session):  # current_user is passed from decorato
         return jsonify({'message': 'Error uploading file'}), 500
 
 
+@app.put('/video/<int:id>')
+@token_required
+@company_owner_level
+@after_token_required
+def update_video(user, session, id):
+    """
+    Updates a video's information (name, description, tags, and/or preview).
+
+    Receives multipart form data. The JSON data (name, description, tags) is expected in the first part of the form.
+    The preview image file (optional) is expected in the 'preview' part of the form.
+
+    Returns a 400 Bad Request if the request data is invalid.
+    Returns a 404 Not Found if the video is not found.
+    Returns a 500 Internal Server Error on database errors.
+    """
+    try:
+        video = session.query(Media).filter_by(IdMedia=id).first()
+        if not video:
+            return jsonify({'message': 'Video not found'}), 404
+
+        # if video.IdCompany != request.headers.get("X-idCompany"):
+        #     return jsonify({'message': 'video not found'}), 404
+
+        if request.form:
+            try:
+                data = json.loads(list(request.form.values())[0])
+                name = data.get('name')
+                description = data.get('description')
+                tags = data.get('tags')
+
+                if name:
+                    video.NameV = name
+                if description:
+                    video.DescriptionV = description
+
+                if tags:
+                    try:
+                        tags_list = [int(tag) for tag in tags]
+                    except ValueError:
+                        return jsonify({'message': 'Invalid tag format. Tags must be integers.'}), 400
+                    
+                    # Clear existing tags and add new ones
+                    video.tags = []
+                    for tag_id in tags_list:
+                        tag = session.query(Tags).filter_by(IdTag=tag_id).first()
+                        if not tag:
+                            return jsonify({'message': f'Tag with ID {tag_id} not found'}), 400
+                        video.tags.append(tag)
+
+
+            except (json.JSONDecodeError, IndexError):
+                return jsonify({'message': 'Invalid JSON data in form'}), 400
+
+        if 'preview' in request.files:
+            preview_file = request.files['preview']
+            if preview_file.filename == '':
+                return jsonify({'message': 'No selected preview file'}), 400
+
+            if preview_file and allowed_preview_file(preview_file.filename):
+                preview_filename = secure_filename(preview_file.filename)
+                preview_path = os.path.join(app.config['PREVIEW_FOLDER'], preview_filename)
+                preview_path = get_unique_filepath_preview(preview_path, session)
+
+                if video.IdMediaPreview and video.IdMediaPreview != 1 and video.IdMediaPreview != 2:  # Check if video has preview
+                    app.logger.info("Video preview was not from default ones")
+                    old_preview = session.query(MediaPreview).filter_by(IdMediaPreview=video.IdMediaPreview).first()
+                    if old_preview:
+                        try:
+                            os.remove(old_preview.PreviewPath)
+                        except FileNotFoundError:
+                            pass
+                        except Exception as e:
+                            app.logger.exception(f"Error removing old preview: {e}")
+                preview_file.save(preview_path)
+                new_preview = MediaPreview(PreviewPath=preview_path)
+                session.add(new_preview)
+                session.commit()
+                session.flush()
+                old_preview = video.preview
+                app.logger.info(f"Modifying video with id: {video.IdMedia}")
+                video.IdMediaPreview = new_preview.IdMediaPreview
+                if old_preview.IdMediaPreview != 1 and old_preview.IdMediaPreview != 2:
+                    app.logger.info("Calling delete of old preview.")
+                    session.delete(old_preview)
+            else:
+                return jsonify({'message': 'Invalid preview file type'}), 400
+        session.commit()
+        return jsonify({'message': 'Video updated successfully'}), 200
+
+    except exc.SQLAlchemyError as e:
+        session.rollback()
+        app.logger.exception(f"Database error updating video: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        app.logger.exception(f"Error updating video: {e}")
+        return jsonify({'message': 'Error updating video'}), 500
+
+
+@app.delete('/video/<int:id>')
+@token_required
+@company_owner_level
+@after_token_required
+def delete_video(user, session, id):
+    """
+    Deletes a video and its associated data (preview, tags).
+
+    Returns a 404 Not Found if the video is not found.
+    Returns a 500 Internal Server Error on database errors.
+    """
+    try:
+        video = session.query(Media).filter_by(IdMedia=id).first()
+        if not video:
+            return jsonify({'message': 'Video not found'}), 404
+
+        # if video.IdCompany != request.headers.get("X-idCompany"):
+        #     return jsonify({'message': 'video not found'}), 404
+
+        # Remove associated preview if exists
+        if video.IdMediaPreview and video.IdMediaPreview != 1 and video.IdMediaPreview != 2:
+            preview = video.preview
+            if preview:
+                try:
+                    os.remove(preview.PreviewPath)
+                except FileNotFoundError:
+                    pass
+                except Exception as e:
+                    app.logger.exception(f"Error removing video preview: {e}")
+
+        # Remove video tags
+        video.tags = []
+
+        for rating in video.ratings:
+            session.delete(rating)
+
+        for comment in video.comments:
+            session.delete(comment)
+
+        for view in video.view_history:
+            session.delete(view)
+
+        try:
+            os.remove(video.VideoPath)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            app.logger.exception(f"Error removing video file: {e}")
+            return jsonify({'message': 'Error while removing video file'}), 500
+
+        preview = video.preview
+        session.delete(video)
+        if preview.IdMediaPreview != 1 and preview.IdMediaPreview != 2:
+            session.delete(preview)
+        session.commit()
+
+        return jsonify({'message': 'Video deleted successfully'}), 200
+
+    except exc.SQLAlchemyError as e:
+        session.rollback()
+        app.logger.exception(f"Database error deleting video: {e}")
+        return jsonify({'message': 'Database error'}), 500
+    except Exception as e:
+        app.logger.exception(f"Error deleting video: {e}")
+        return jsonify({'message': 'Error deleting video'}), 500
+
+
 @app.route('/video/<int:id>/get')
 @token_required
 @after_token_required
@@ -177,6 +342,7 @@ def get_video_link(user, session, id):
 
         media_info = {
             "name": media.NameV,
+            "company_id": media.IdCompany,
             "description": media.DescriptionV,
             "temporary_link": temp_link,
             "tags": tags,
