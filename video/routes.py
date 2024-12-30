@@ -5,11 +5,13 @@ import re
 import json
 import urllib
 import mimetypes
+from collections import Counter
 from werkzeug.utils import secure_filename  # For secure filename
 from . import tags, comments, reports
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
 from ..user.functions import token_required, after_token_required, company_owner_level
 from ..database.media import Media
+from ..database.mediaTagsConnector import MediaTagsConnector
 from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
 from ..database.ratings import Ratings
@@ -293,7 +295,6 @@ responses:
                 preview_path = get_unique_filepath_preview(preview_path, session)
 
                 if video.IdMediaPreview and video.IdMediaPreview != 1 and video.IdMediaPreview != 2:  # Check if video has preview
-                    app.logger.info("Video preview was not from default ones")
                     old_preview = session.query(MediaPreview).filter_by(IdMediaPreview=video.IdMediaPreview).first()
                     if old_preview:
                         try:
@@ -308,10 +309,8 @@ responses:
                 session.commit()
                 session.flush()
                 old_preview = video.preview
-                app.logger.info(f"Modifying video with id: {video.IdMedia}")
                 video.IdMediaPreview = new_preview.IdMediaPreview
                 if old_preview.IdMediaPreview != 1 and old_preview.IdMediaPreview != 2:
-                    app.logger.info("Calling delete of old preview.")
                     session.delete(old_preview)
             else:
                 return jsonify({'message': 'Invalid preview file type'}), 400
@@ -456,6 +455,9 @@ responses:
             company_id:
               type: integer
               description: The ID of the company that owns the video.
+            company_name:
+              type: string
+              description: Name of the company that owns the video.
             description:
               type: string
               description: The video description.
@@ -529,6 +531,7 @@ responses:
         media_info = {
             "name": media.NameV,
             "company_id": media.IdCompany,
+            "company_name": media.companies.Name,
             "description": media.DescriptionV,
             "temporary_link": temp_link,
             "tags": tags,
@@ -863,3 +866,91 @@ responses:
     except Exception as e:
         app.logger.exception(f"Error retrieving videos: {e}")
         return jsonify({'message': 'Error retrieving videos'}), 500
+
+
+@app.get('/video/recommendations')
+@token_required
+@after_token_required
+def get_video_recommendations(user, session):
+    """
+    Retrieves personalized video recommendations for the current user based on recently watched videos and their tags, prioritizing new videos.
+
+    This endpoint uses a weighted tag-based approach:
+    1. Retrieves the user's recently watched videos (up to 10).
+    2. Counts the occurrences of each tag across these videos to assign weights.
+    3. Queries for new videos (uploaded within the last 7 days) that share these tags.
+    4. Scores recommended videos based on the sum of weights of their matching tags.
+    5. Returns the top 20 weighted videos, ordered by upload time (most recent first) and then by weight (highest weight first).
+
+    ---
+    security:
+      - bearerAuth: []
+    tags:
+      - Video
+      - Recommendations
+    responses:
+      200:
+        description: Video recommendations retrieved successfully. Returns a list of video objects.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  IdMedia:
+                    type: integer
+                    description: The ID of the recommended video.
+                  NameV:
+                    type: string
+                    description: The name of the recommended video.
+                  DescriptionV:
+                    type: string
+                    description: The description of the recommended video.
+      500:
+        description: Internal server error.
+    """
+    try:
+        recent_videos = session.query(ViewHistory.IdMedia).filter_by(IdUser=user.IdUser).order_by(ViewHistory.ViewTime.desc()).limit(10).all()
+        if not recent_videos:
+            return jsonify([]), 200
+
+        recent_video_ids = [v[0] for v in recent_videos]
+
+        recent_video_tags = session.query(MediaTagsConnector.IdTag).filter(MediaTagsConnector.IdMedia.in_(recent_video_ids)).distinct().all()
+        if not recent_video_tags:
+            return jsonify([]), 200
+
+        recent_tag_ids = [t[0] for t in recent_video_tags]
+        tag_counts = Counter(recent_tag_ids) # Count tag occurrences
+        one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
+
+        recommended_videos = session.query(Media).join(Media.tags).filter(
+            Tags.IdTag.in_(recent_tag_ids),
+            Media.UploadTime >= one_week_ago,
+            ~Media.IdMedia.in_(recent_video_ids)
+        ).order_by(Media.UploadTime.desc()).limit(20).all()
+
+        weighted_videos = []
+        for video in recommended_videos:
+            weight = sum(tag_counts[tag.IdTag] for tag in video.tags if tag.IdTag in tag_counts)
+            weighted_videos.append((video, weight))
+
+        weighted_videos.sort(key=lambda x: x[1], reverse=True) # Sort by weight
+
+
+        video_list = [{
+            "media_id": video.IdMedia,
+            "name": video.NameV,
+            "description": video.DescriptionV,
+            "company_id": video.companies.IdCompany,
+            "company_name": video.companies.Name,
+            "upload_time": video.UploadTime.isoformat(),
+            "tags": [{"id": tag.IdTag, "name": tag.TagName} for tag in video.tags]
+        } for video, weight in weighted_videos]
+
+        return jsonify(video_list), 200
+
+    except Exception as e:
+        app.logger.exception(f"Error getting recommendations: {e}")
+        return jsonify({'message': 'Internal server error'}), 500
