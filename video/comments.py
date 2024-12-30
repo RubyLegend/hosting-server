@@ -19,6 +19,7 @@ Retrieves all comments for a specific video.
 security:
   - bearerAuth: []
 tags:
+  - Video
   - Comments
 parameters:
   - in: path
@@ -105,6 +106,7 @@ Adds a new comment to a video.
 security:
   - bearerAuth: []
 tags:
+  - Video
   - Comments
 requestBody:
   required: true

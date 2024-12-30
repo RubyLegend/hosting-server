@@ -150,10 +150,8 @@ def search(user, session):
             # Splitting into video and audio
             media_results = media_query.all()
 
-            video_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_VIDEO_EXTENSIONS])).all()
-            audio_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_AUDIO_EXTENSIONS])).all()
-
             if "video" in search_types:
+                video_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_VIDEO_EXTENSIONS])).all()
                 results["video"] = [{
                     "id": video.IdMedia,
                     "name": video.NameV,
@@ -163,6 +161,7 @@ def search(user, session):
                     "company_name": video.companies.Name} for video in video_results]
 
             if "audio" in search_types:
+                audio_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_AUDIO_EXTENSIONS])).all()
                 results["audio"] = [{
                     "id": audio.IdMedia,
                     "name": audio.NameV,

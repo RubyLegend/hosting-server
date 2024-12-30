@@ -11,7 +11,6 @@ from . import tags, comments, reports
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
 from ..user.functions import token_required, after_token_required, company_owner_level
 from ..database.media import Media
-from ..database.mediaTagsConnector import MediaTagsConnector
 from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
 from ..database.ratings import Ratings
@@ -19,8 +18,9 @@ from ..database.ratingTypes import RatingTypes
 from ..database.viewHistory import ViewHistory
 from .functions import (allowed_file, allowed_preview_file,
                         get_unique_filepath, generate_temporary_link,
-                        get_rating_counts, get_chunk, get_unique_filepath_preview)
-from sqlalchemy import exc, func, distinct
+                        get_rating_counts, get_chunk, get_unique_filepath_preview,
+                        calculate_time_decay, recommendation_generator)
+from sqlalchemy import exc, func, distinct, or_, and_
 
 app: Flask
 
@@ -310,6 +310,8 @@ responses:
                 session.flush()
                 old_preview = video.preview
                 video.IdMediaPreview = new_preview.IdMediaPreview
+                session.commit()
+                session.refresh(video)
                 if old_preview.IdMediaPreview != 1 and old_preview.IdMediaPreview != 2:
                     session.delete(old_preview)
             else:
@@ -873,14 +875,53 @@ responses:
 @after_token_required
 def get_video_recommendations(user, session):
     """
-    Retrieves personalized video recommendations for the current user based on recently watched videos and their tags, prioritizing new videos.
+    Retrieves personalized video recommendations for the current user.
 
-    This endpoint uses a weighted tag-based approach:
-    1. Retrieves the user's recently watched videos (up to 10).
-    2. Counts the occurrences of each tag across these videos to assign weights.
-    3. Queries for new videos (uploaded within the last 7 days) that share these tags.
-    4. Scores recommended videos based on the sum of weights of their matching tags.
-    5. Returns the top 20 weighted videos, ordered by upload time (most recent first) and then by weight (highest weight first).
+    This endpoint implements a weighted tag-based approach with the following steps:
+
+    1. **Retrieving Recently Watched Videos (up to 10):**
+       - Fetches the user's most recently watched videos (maximum of 10) from the `ViewHistory` table, ordered by `ViewTime` (most recent first).
+       - Stores the retrieved video IDs in a list (`recent_video_ids`).
+
+    2. **Counting Tag Occurrences:**
+       - Queries for the tags associated with the user's recently watched videos using the `MediaTagsConnector` table.
+       - Filters out duplicate tags using `distinct()`.
+       - Extracts the tag IDs from the results and stores them in a list (`recent_tag_ids`).
+       - Creates a `Counter` object (`tag_counts`) to efficiently count the occurrences of each tag across the recently watched videos.
+
+    3. **Finding New Videos with Matching Tags (within the last 7 days):**
+       - Sets a time threshold (`one_week_ago`) to identify recently uploaded videos (within the last 7 days).
+       - Queries for videos from the `Media` table that meet the following criteria:
+           - Their tags (`IdTag`) must be present in the `recent_tag_ids` list, indicating relevance to the user's watched videos.
+           - Their upload time (`UploadTime`) must be greater than or equal to `one_week_ago`, ensuring they are recently uploaded.
+           - They must not be among the user's recently watched videos (`~Media.IdMedia.in_(recent_video_ids)`), avoiding duplicates.
+       - Orders the retrieved videos by their upload time in descending order (`order_by(Media.UploadTime.desc())`), prioritizing the newest ones.
+       - Stores the retrieved video objects in a list (`personalized_recommendations`).
+
+    4. **Calculating Weighted Scores for Recommended Videos:**
+       - Iterates through each video in `personalized_recommendations`:
+           - Initializes a weight variable (`weight`) to zero.
+           - For each tag (`tag`) associated with the current video, checks if its ID (`tag.IdTag`) exists in the `tag_counts` dictionary.
+           - If the tag exists, adds its count (`tag_counts[tag.IdTag]`) to the `weight`, giving more weight to videos with more matching tags from the user's history.
+
+       - **Incorporating Time-Weighted Likes and Dislikes (Optional):**
+           - Optionally, retrieves the user's likes and dislikes (ratings) for each video in `personalized_recommendations`.
+           - Uses the `calculate_time_decay` function (assumed to be implemented elsewhere) to adjust the weight based on the rating time (more recent ratings have higher influence).
+           - Sums the adjusted weights for likes (`like_weight`) and dislikes (`dislike_weight`) and adds `like_weight * 0.5 - dislike_weight * 0.2` to the overall `weight`. This gives a slight preference to videos the user has liked recently.
+
+       - Appends a tuple containing the video object and its calculated weight (`(video, weight)`) to a list (`weighted_videos`).
+
+    5. **Sorting and Selecting Top Recommendations:**
+       - Sorts the `weighted_videos` list by weight in descending order (`sort(key=lambda x: x[1], reverse=True)`), prioritizing videos with higher weights (more relevant tags and potentially more recent likes).
+
+    6. **Handling Cold Start (if less than 10 recommendations):**
+       - Checks if the number of recommended videos (`len(recommended_videos)`) is less than 10 (desired number of recommendations).
+       - If there are fewer than 10 recommendations, calculates the number of videos needed to fill the gap (`num_to_fill`).
+       - Queries for additional videos from the `Media` table, excluding the videos already recommended (`~Media.IdMedia.in_([video.IdMedia for video in recommended_videos])`).
+       - Sorts these cold start recommendations by upload time in descending order, prioritizing newer videos.
+       - Calculates weights for these cold start videos similar to step 4, optionally incorporating time-weighted likes and dislikes.
+       - Sorts the cold start recommendations by weight in descending order.
+       - Extends the `recommended
 
     ---
     security:
@@ -894,62 +935,116 @@ def get_video_recommendations(user, session):
         content:
           application/json:
             schema:
-              type: array
-              items:
-                type: object
-                properties:
-                  IdMedia:
-                    type: integer
-                    description: The ID of the recommended video.
-                  NameV:
-                    type: string
-                    description: The name of the recommended video.
-                  DescriptionV:
-                    type: string
-                    description: The description of the recommended video.
+              type: object
+              properties:
+                audio:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: the id of the recommended video.
+                        name:
+                          type: string
+                          description: the name of the recommended video.
+                        description:
+                          type: string
+                          description: The description of the recommended video.
+                        company_id:
+                          type: integer
+                          description: the id of the company, that uploaded video.
+                        company_name:
+                          type: string
+                          description: the name of the company, that recommended video.
+                        upload_time:
+                          type: string
+                          format: date-time
+                          description: The time the video was uploaded (in ISO 8601 format).
+
+                        tags:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                description: The ID of the tag associated with the video.
+                              name:
+                                type: string
+                                description: The name of the tag.
+                video:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: the id of the recommended video.
+                        name:
+                          type: string
+                          description: the name of the recommended video.
+                        description:
+                          type: string
+                          description: The description of the recommended video.
+                        company_id:
+                          type: integer
+                          description: the id of the company, that uploaded video.
+                        company_name:
+                          type: string
+                          description: the name of the company, that recommended video.
+                        upload_time:
+                          type: string
+                          format: date-time
+                          description: The time the video was uploaded (in ISO 8601 format).
+
+                        tags:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                                description: The ID of the tag associated with the video.
+                              name:
+                                type: string
+                                description: The name of the tag.
       500:
         description: Internal server error.
     """
     try:
-        recent_videos = session.query(ViewHistory.IdMedia).filter_by(IdUser=user.IdUser).order_by(ViewHistory.ViewTime.desc()).limit(10).all()
-        if not recent_videos:
-            return jsonify([]), 200
+        recent_videos = session.query(ViewHistory).join(ViewHistory.media).filter(and_(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_VIDEO_EXTENSIONS]), ViewHistory.IdUser == user.IdUser)).order_by(ViewHistory.ViewTime.desc()).all()
+        num_recent_videos = len(recent_videos)
 
-        recent_video_ids = [v[0] for v in recent_videos]
+        recommended_videos = recommendation_generator(user, session, num_recent_videos, recent_videos)
 
-        recent_video_tags = session.query(MediaTagsConnector.IdTag).filter(MediaTagsConnector.IdMedia.in_(recent_video_ids)).distinct().all()
-        if not recent_video_tags:
-            return jsonify([]), 200
+        recent_audios = session.query(ViewHistory).join(ViewHistory.media).filter(and_(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_AUDIO_EXTENSIONS]), ViewHistory.IdUser == user.IdUser)).order_by(ViewHistory.ViewTime.desc()).all()
+        num_recent_audios = len(recent_audios)
 
-        recent_tag_ids = [t[0] for t in recent_video_tags]
-        tag_counts = Counter(recent_tag_ids) # Count tag occurrences
-        one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
-
-        recommended_videos = session.query(Media).join(Media.tags).filter(
-            Tags.IdTag.in_(recent_tag_ids),
-            Media.UploadTime >= one_week_ago,
-            ~Media.IdMedia.in_(recent_video_ids)
-        ).order_by(Media.UploadTime.desc()).limit(20).all()
-
-        weighted_videos = []
-        for video in recommended_videos:
-            weight = sum(tag_counts[tag.IdTag] for tag in video.tags if tag.IdTag in tag_counts)
-            weighted_videos.append((video, weight))
-
-        weighted_videos.sort(key=lambda x: x[1], reverse=True) # Sort by weight
-
+        recommended_audios = recommendation_generator(user, session, num_recent_audios, recent_audios, is_audio=True)
 
         video_list = [{
-            "media_id": video.IdMedia,
+            "id": video.IdMedia,
             "name": video.NameV,
             "description": video.DescriptionV,
             "company_id": video.companies.IdCompany,
             "company_name": video.companies.Name,
             "upload_time": video.UploadTime.isoformat(),
             "tags": [{"id": tag.IdTag, "name": tag.TagName} for tag in video.tags]
-        } for video, weight in weighted_videos]
-
-        return jsonify(video_list), 200
+        } for video in recommended_videos]
+        audio_list = [{
+            "id": audio.IdMedia,
+            "name": audio.NameV,
+            "description": audio.DescriptionV,
+            "company_id": audio.companies.IdCompany,
+            "company_name": audio.companies.Name,
+            "upload_time": audio.UploadTime.isoformat(),
+            "tags": [{"id": tag.IdTag, "name": tag.TagName} for tag in audio.tags]
+        } for audio in recommended_audios]
+        return jsonify({
+            "video": video_list,
+            "audio": audio_list
+        }), 200
 
     except Exception as e:
         app.logger.exception(f"Error getting recommendations: {e}")

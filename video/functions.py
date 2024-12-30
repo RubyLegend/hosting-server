@@ -1,13 +1,18 @@
 from flask import Flask, url_for
 import datetime
+import math
 import os
 from typing import Optional, Tuple
-from .. import app, ALLOWED_EXTENSIONS, ALLOWED_PREVIEW_EXTENSIONS, redis_client
+from collections import Counter
+from .. import app, ALLOWED_AUDIO_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_EXTENSIONS, ALLOWED_PREVIEW_EXTENSIONS, redis_client
 from ..database.media import Media
 from ..database.mediaPreview import MediaPreview
 from ..database.ratings import Ratings
+from ..database.ratingTypes import RatingTypes
+from ..database.tags import Tags
+from ..database.mediaTagsConnector import MediaTagsConnector
 import uuid
-from sqlalchemy import func
+from sqlalchemy import func, and_, or_
 
 app: Flask
 
@@ -129,3 +134,90 @@ def get_chunk(byte1: Optional[int] = None, byte2: Optional[int] = None, filepath
         chunk = f.read(length)
 
     return chunk, start, length, file_size
+
+
+def calculate_time_decay(rating_time):
+    """Calculates a time decay factor based on the rating time."""
+    time_difference = datetime.datetime.now() - rating_time
+    days_difference = time_difference.days
+
+    # Example decay function (exponential decay)
+    decay_factor = math.exp(-days_difference / 7) # Decay by half each week
+
+    return decay_factor
+
+
+def recommendation_generator(user, session, num_recent_videos, recent_videos, is_audio=False):
+    recommended_videos = []
+
+    if num_recent_videos > 0:
+        recent_video_ids = [v.IdMedia for v in recent_videos]
+        if num_recent_videos < 10:
+            recent_videos = recent_videos[:num_recent_videos]
+        else:
+            recent_videos = recent_videos[:10]
+        recent_video_ids = [v.IdMedia for v in recent_videos]
+
+        recent_video_tags = session.query(MediaTagsConnector.IdTag).filter(MediaTagsConnector.IdMedia.in_(recent_video_ids)).distinct().all()
+        if recent_video_tags:
+            recent_tag_ids = [t[0] for t in recent_video_tags]
+            tag_counts = Counter(recent_tag_ids) # Count tag occurrences
+            one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
+
+            personalized_recommendations = session.query(Media).join(Media.tags).filter(
+                Tags.IdTag.in_(recent_tag_ids),
+                Media.UploadTime >= one_week_ago,
+                ~Media.IdMedia.in_(recent_video_ids),
+                or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in (ALLOWED_AUDIO_EXTENSIONS if is_audio else ALLOWED_VIDEO_EXTENSIONS) ])
+            ).order_by(Media.UploadTime.desc()).all()
+        else:
+
+            one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
+
+            personalized_recommendations = session.query(Media).filter(
+                Media.UploadTime >= one_week_ago,
+                ~Media.IdMedia.in_(recent_video_ids),
+                or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in (ALLOWED_AUDIO_EXTENSIONS if is_audio else ALLOWED_VIDEO_EXTENSIONS) ])
+            ).order_by(Media.UploadTime.desc()).all()
+
+        weighted_videos = []
+        for video in personalized_recommendations:
+            weight = sum(tag_counts[tag.IdTag] for tag in video.tags if tag.IdTag in tag_counts)
+
+            # Incorporate likes and dislikes
+            likes = session.query(Ratings).join(Ratings.rating_types)\
+                           .filter(Ratings.IdMedia == video.IdMedia, RatingTypes.RatingFactor == 1).all()
+            dislikes = session.query(Ratings).join(Ratings.rating_types)\
+                              .filter(Ratings.IdMedia == video.IdMedia, RatingTypes.RatingFactor == -1).all()
+
+            # Adjust weight based on likes and dislikes
+            like_weight = sum(calculate_time_decay(rating.RatingTime) for rating in likes) if likes else 0
+            dislike_weight = sum(calculate_time_decay(rating.RatingTime) for rating in dislikes) if dislikes else 0
+
+            weight += like_weight * 0.5 - dislike_weight * 0.2
+            weighted_videos.append((video, weight))
+
+        weighted_videos.sort(key=lambda x: x[1], reverse=True)  # Sort by weight
+        recommended_videos.extend([video for video, weight in weighted_videos])
+
+    if len(recommended_videos) < 10:  # Cold start problem
+        num_to_fill = 10 - len(recommended_videos)
+        one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
+        coldstart_recommendations = session.query(Media).filter(~Media.IdMedia.in_([video.IdMedia for video in recommended_videos]), or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in (ALLOWED_AUDIO_EXTENSIONS if is_audio else ALLOWED_VIDEO_EXTENSIONS) ]))\
+                                           .order_by(Media.UploadTime.desc()).all()
+        weighted_coldstart_videos = []
+        for video in coldstart_recommendations:
+            likes = session.query(Ratings).join(Ratings.rating_types)\
+                           .filter(Ratings.IdMedia == video.IdMedia, RatingTypes.RatingFactor == 1).all()
+            dislikes = session.query(Ratings).join(Ratings.rating_types)\
+                              .filter(Ratings.IdMedia == video.IdMedia, RatingTypes.RatingFactor == -1).all()
+
+            like_weight = sum(calculate_time_decay(rating.RatingTime) for rating in likes) if likes else 0
+            dislike_weight = sum(calculate_time_decay(rating.RatingTime) for rating in dislikes) if dislikes else 0
+
+            weight = like_weight * 0.5 - dislike_weight * 0.2
+            weighted_coldstart_videos.append((video, weight))
+        weighted_coldstart_videos.sort(key=lambda x: x[1], reverse=True)
+        recommended_videos.extend([video for video, weight in weighted_coldstart_videos[:num_to_fill]])
+
+    return recommended_videos
