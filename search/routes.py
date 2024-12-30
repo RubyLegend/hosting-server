@@ -130,7 +130,8 @@ def search(user, session):
                     Users.Surname.ilike(f"%{search_text}%"),
                     Users.LoginUser.ilike(f"%{search_text}%"),
                     Users.Email.ilike(f"%{search_text}%")
-                )
+                ),
+                Users.IsActive
             ).all()
             results["user"] = [{
                 "user_id": user.IdUser,

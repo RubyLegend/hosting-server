@@ -247,7 +247,7 @@ responses:
         if not comment:
             return jsonify({'message': 'Comment not found'}), 404
 
-        if comment.IdUser != current_user.IdUser and not has_moderator_access(current_user.IdUser, session):
+        if comment.IdUser != current_user.IdUser and not has_moderator_access(current_user, session):
             return jsonify({'message': 'You do not have permission to delete this comment'}), 403
 
         # Search for linked reports
