@@ -4,13 +4,13 @@ from ..database.comments import Comments
 from ..database.media import Media
 from ..database.users import Users
 from ..database.reports import Reports
-from .. import app, Session
-from ..user.functions import token_required, after_token_required, has_moderator_access
+from .. import app, Session, redis_client
+from ..helpers.functions import token_required, after_token_required, has_moderator_access
 from sqlalchemy import exc
 
 
 @app.get('/video/<int:v>/comments')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_video_comments(user, session, v):
     """
@@ -97,7 +97,7 @@ responses:
 
 
 @app.post('/video/<int:v>/comments')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def add_video_comment(current_user, session, v):
     """
@@ -202,7 +202,7 @@ responses:
 
 
 @app.delete('/comments/<int:comment_id>')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def delete_video_comment(current_user, session, comment_id):
     """
@@ -270,7 +270,7 @@ responses:
 
 
 @app.post('/comments/<int:id>/report')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def report_comment(user, session, id):
     """

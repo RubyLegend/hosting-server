@@ -16,8 +16,8 @@ swagger_template = {
     "openapi": "3.0.3",
     "swagger": "3.0.3",
     "info": {
-        "title": "My Flask API",
-        "description": "API testing endpoint for Media Hosting application",
+        "title": "Video API",
+        "description": "API for testing video related endpoints for Media Hosting application",
         "version": "1.0.0"
     },
     "basePath": "/",  # base bash for blueprint registration
@@ -65,7 +65,7 @@ Base.metadata.create_all(engine)
 # Configuration for uploads
 UPLOAD_FOLDER = 'uploads'  # Directory to store uploaded files
 PREVIEW_FOLDER = 'previews'
-LOGO_FOLDER = 'logos'
+# LOGO_FOLDER = 'logos'
 
 # mid files currently not working as expected
 # WMP infinitely loading file without actually caching it
@@ -78,10 +78,10 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Create the upload directory if it doesn't exist
 app.config['PREVIEW_FOLDER'] = PREVIEW_FOLDER
 os.makedirs(PREVIEW_FOLDER, exist_ok=True)  # Create the preview directory if it doesn't exist
-app.config['LOGO_FOLDER'] = LOGO_FOLDER
-os.makedirs(LOGO_FOLDER, exist_ok=True)  # Create the logo directory if it doesn't exist
-app.config['MAX_CONTENT_LENGTH'] = None  # Disable limit in Flask
+# app.config['LOGO_FOLDER'] = LOGO_FOLDER
+# os.makedirs(LOGO_FOLDER, exist_ok=True)  # Create the logo directory if it doesn't exist
+# app.config['MAX_CONTENT_LENGTH'] = None  # Disable limit in Flask
 
 @app.route("/")
 def home():
-    return "<h1>Hello World!</h1>"
+    return "<h1>Hello World from video routes!</h1>"

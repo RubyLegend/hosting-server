@@ -1,6 +1,8 @@
-from .. import app, redis_client
+from .. import app, redis_client, Session
 from ..database.users import Users
-from .functions import token_required, company_owner_level, admin_level, user_or_admin_required, user_has_access_level, get_access_level_by_name, after_token_required
+from ..helpers.functions import (token_required, company_owner_level,
+    user_or_admin_required, user_has_access_level,
+    get_access_level_by_name, after_token_required)
 from flask import Flask, request, jsonify
 import bcrypt
 import redis
@@ -8,13 +10,20 @@ import redis
 app: Flask
 redis_client: redis.Redis
 
+
 @app.get('/users/search')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def search_users(user, session):
     """
-Searches for users based on their email.
+Searches for users based on their email (company owners and higher).
+
+Accepts a query parameter 's' containing the search string.
+Returns a JSON array of user objects matching the search string.
+Returns an empty array if no users are found.
+Returns a 400 Bad Request if the 's' parameter is missing.
+Returns a 500 Internal Server Error on database errors.
 ---
 tags:
     - Users
@@ -25,6 +34,10 @@ parameters:
     name: s
     type: string
     description: The search string to filter users by email (case-insensitive substring match).
+  - in: header
+    name: X-idCompany
+    description: ID of a company, for which the search will be performed
+    type: integer
 responses:
   200:
     description: User search results. Returns an empty array if no users are found.
@@ -47,15 +60,6 @@ responses:
   500:
     description: Internal server error during user search.
 """
-    """
-    Searches for users based on their email.
-
-    Accepts a query parameter 's' containing the search string.
-    Returns a JSON array of user objects matching the search string.
-    Returns an empty array if no users are found.
-    Returns a 400 Bad Request if the 's' parameter is missing.
-    Returns a 500 Internal Server Error on database errors.
-    """
     search_string = request.args.get('s')
 
     if not search_string:
@@ -73,7 +77,7 @@ responses:
         return jsonify({'message': 'Internal server error'}), 500
 
 @app.get("/users/<int:id>")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_user_info(user, session, id):
     """
@@ -150,7 +154,7 @@ responses:
 
 
 @app.put('/users/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @user_or_admin_required
 @after_token_required
 def update_user(user, session, id):
@@ -287,7 +291,7 @@ responses:
 
 
 @app.delete('/users/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @user_or_admin_required
 @after_token_required
 def delete_user(user, session, id):

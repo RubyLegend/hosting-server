@@ -9,7 +9,7 @@ from collections import Counter
 from werkzeug.utils import secure_filename  # For secure filename
 from . import tags, comments, reports
 from .. import app, Session, redis_client, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
-from ..user.functions import token_required, after_token_required, company_owner_level
+from ..helpers.functions import token_required, after_token_required, company_owner_level
 from ..database.media import Media
 from ..database.mediaPreview import MediaPreview
 from ..database.tags import Tags
@@ -19,13 +19,13 @@ from ..database.viewHistory import ViewHistory
 from .functions import (allowed_file, allowed_preview_file,
                         get_unique_filepath, generate_temporary_link,
                         get_rating_counts, get_chunk, get_unique_filepath_preview,
-                        calculate_time_decay, recommendation_generator)
+                        recommendation_generator)
 from sqlalchemy import exc, func, distinct, or_, and_
 
 app: Flask
 
 @app.post('/video/upload')
-@token_required  # Protect this endpoint
+@token_required(app, redis_client, Session)  # Protect this endpoint
 @company_owner_level
 @after_token_required
 def upload_video(current_user, session):  # current_user is passed from decorator
@@ -185,7 +185,7 @@ responses:
 
 
 @app.put('/video/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def update_video(user, session, id):
@@ -329,7 +329,7 @@ responses:
 
 
 @app.delete('/video/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def delete_video(user, session, id):
@@ -414,7 +414,7 @@ responses:
 
 
 @app.route('/video/<int:id>/get')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_video_link(user, session, id):
     """
@@ -552,7 +552,7 @@ responses:
 
 
 @app.get('/video/<int:id>/preview')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_video_preview(current_user, session, id):
     """
@@ -600,7 +600,7 @@ responses:
 
 
 @app.post('/video/<int:id>/rating')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def rate_video(current_user, session, id):
     """
@@ -801,7 +801,7 @@ responses:
 
 
 @app.get('/video')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_all_videos(current_user, session):
     """
@@ -871,7 +871,7 @@ responses:
 
 
 @app.get('/video/recommendations')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_video_recommendations(user, session):
     """

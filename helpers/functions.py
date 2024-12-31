@@ -1,24 +1,17 @@
 import jwt
 import datetime
 import redis
-import json
-from .. import app, redis_client, Session
-from ..database.userRoles import UserRoles
 from ..database.accessLevels import AccessLevels
 from ..database.users import Users
 from flask import Flask, request, jsonify
 from functools import wraps
-from sqlalchemy import or_
-import redis
 
-app: Flask
-redis_client: redis.Redis
 
-def generate_token(user_id):
+def generate_token(app: Flask, redis_client: redis.Redis, user_id):
     """Generates a JWT token for a given user ID."""
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30),  # Token expiration time
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60),  # Token expiration time
         'iat': datetime.datetime.utcnow()  # Issued at time
     }
     token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
@@ -41,65 +34,66 @@ def after_token_required(f):
     return decorated_function
 
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1]  # Extract token from Bearer header
-        if not token:
-            return jsonify({'message': 'Token is missing!'}), 401
+def token_required(app: Flask, redis_client: redis.Redis, Session):
+    def token_required_outer(f):
+        @wraps(f)
+        def token_required_inner(*args, **kwargs):
+            token = None
+            if 'Authorization' in request.headers:
+                token = request.headers['Authorization'].split(" ")[1]  # Extract token from Bearer header
+            if not token:
+                return jsonify({'message': 'Token is missing!'}), 401
 
-        session = Session()
-        try:
-            # Check if the token exists in Redis
-            user_id_bytes = redis_client.get(f"token:{token}")
+            session = Session()
+            try:
+                # Check if the token exists in Redis
+                user_id_bytes = redis_client.get(f"token:{token}")
 
-            if user_id_bytes:
-                try:
-                    user_id = int(user_id_bytes.decode('utf-8'))
-                    user = session.query(Users).filter_by(IdUser=user_id).first() # Retrieve user object
-                    if not user:
-                        return jsonify({'message': 'User not found'}), 401
+                if user_id_bytes:
+                    try:
+                        user_id = int(user_id_bytes.decode('utf-8'))
+                        user = session.query(Users).filter_by(IdUser=user_id).first() # Retrieve user object
+                        if not user:
+                            return jsonify({'message': 'User not found'}), 401
 
-                except Exception:
-                    return jsonify({'message': 'Token is invalid!'}), 401
+                    except Exception:
+                        return jsonify({'message': 'Token is invalid!'}), 401
 
-                # Latest auth token
-                current_auth_token = redis_client.get(f"user:{user_id}:token")
-                if current_auth_token:
-                    current_auth_token = current_auth_token.decode('utf-8')
+                    # Latest auth token
+                    current_auth_token = redis_client.get(f"user:{user_id}:token")
+                    if current_auth_token:
+                        current_auth_token = current_auth_token.decode('utf-8')
+                    else:
+                        return jsonify({'message': 'Token has expired!'}), 401
+                    if current_auth_token is not None and current_auth_token != token:
+                        # If tokens mismatch - then we have second authentication
+                        # Invalidating last one
+                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), "INVALID")
+                        redis_client.setex(f"token:{current_auth_token}", datetime.timedelta(minutes=30), str(user_id))
+                        return jsonify({'message': 'Token has expired!'}), 401
                 else:
-                    return jsonify({'message': 'Token has expired!'}), 401
-                if current_auth_token is not None and current_auth_token != token:
-                    # If tokens mismatch - then we have second authentication
-                    # Invalidating last one
-                    redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), "INVALID")
-                    redis_client.setex(f"token:{current_auth_token}", datetime.timedelta(minutes=30), str(user_id))
-                    return jsonify({'message': 'Token has expired!'}), 401
-            else:
-                try:
-                    data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-                    user_id = data['user_id']
-                    user = session.query(Users).filter_by(IdUser=user_id).first() # Retrieve user object
-                    if not user or not user.IsActive:
-                        return jsonify({'message': 'User not found'}), 401
+                    try:
+                        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+                        user_id = data['user_id']
+                        user = session.query(Users).filter_by(IdUser=user_id).first() # Retrieve user object
+                        if not user or not user.IsActive:
+                            return jsonify({'message': 'User not found'}), 401
 
-                    redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=60), token)
-                    redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), str(user_id))
-                except jwt.ExpiredSignatureError:
-                    return jsonify({'message': 'Token has expired!'}), 401
-                except jwt.InvalidTokenError:
-                    return jsonify({'message': 'Token is invalid!'}), 401
+                        redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=60), token)
+                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), str(user_id))
+                    except jwt.ExpiredSignatureError:
+                        return jsonify({'message': 'Token has expired!'}), 401
+                    except jwt.InvalidTokenError:
+                        return jsonify({'message': 'Token is invalid!'}), 401
 
-            return f(user, session, *args, **kwargs)
+                return f(user, session, *args, **kwargs)
 
-        except Exception as e:
-            session.rollback()
-            return jsonify({'message': 'Something went wrong!' + str(e)}), 500
+            except Exception as e:
+                session.rollback()
+                return jsonify({'message': 'Something went wrong!' + str(e)}), 500
 
-    return decorated
-
+        return token_required_inner
+    return token_required_outer
 
 
 def get_access_level_by_name(session, access_name):
@@ -123,7 +117,6 @@ def admin_level(f):
                 return jsonify({'message': 'Admin access required'}), 403
             return f(user, session, *args, **kwargs)
         except Exception as e:
-            app.logger.exception(f"Error checking admin rights: {e}")
             return jsonify({'message': 'Error checking rights'}), 500
     return decorated_function
 
@@ -149,7 +142,6 @@ def moderator_level(f):
                 return jsonify({'message': 'Moderator access required'}), 403
             return f(user, session, *args, **kwargs)
         except Exception as e:
-            app.logger.exception(f"Error checking moderator rights: {e}")
             return jsonify({'message': 'Error checking rights'}), 500
     return decorated_function
 

@@ -8,15 +8,15 @@ from ..database.subscribers import Subscribers
 from ..database.media import Media
 from ..database.userRoles import UserRoles
 from ..database.logos import CompanyLogo
-from .. import app
+from .. import app, redis_client, Session
 from werkzeug.utils import secure_filename  # For secure filename
-from ..user.functions import company_owner_level, admin_level, token_required, after_token_required, get_access_level_by_name
+from ..helpers.functions import company_owner_level, admin_level, token_required, after_token_required, get_access_level_by_name
 
 app: Flask
 
 
 @app.post('/company')
-@token_required
+@token_required(app, redis_client, Session)
 @admin_level
 @after_token_required
 def create_company(user, session):
@@ -121,7 +121,7 @@ def create_company(user, session):
 
 
 @app.get('/company/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_company_info(current_user, session, id):
     """
@@ -202,7 +202,7 @@ responses:
 
 
 @app.put('/company/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def update_company(user, session, id):
@@ -326,7 +326,7 @@ responses:
 
 
 @app.delete('/company/<int:id>')
-@token_required
+@token_required(app, redis_client, Session)
 @admin_level
 @after_token_required
 def delete_company(user, session, id):
@@ -423,7 +423,7 @@ def delete_company(user, session, id):
 
 
 @app.get('/company/<int:id>/logo')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_company_preview(current_user, session, id):
     """
@@ -475,7 +475,7 @@ responses:
 
 
 @app.get('/company/<int:id>/owners')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def get_company_owners(user, session, id):
@@ -544,7 +544,7 @@ responses:
 
 
 @app.post('/company/<int:id>/owners')
-@token_required
+@token_required(app, redis_client, Session)
 @admin_level # Only admins can manage owners
 @after_token_required
 def update_company_owners(user, session, id):
@@ -641,7 +641,7 @@ responses:
 
 
 @app.delete('/company/<int:id>/owners')
-@token_required
+@token_required(app, redis_client, Session)
 @admin_level # Only admins can manage owners
 @after_token_required
 def delete_company_owners(user, session, id):
@@ -724,7 +724,7 @@ responses:
 
 
 @app.get('/company/<int:id>/moderators')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level
 @after_token_required
 def get_company_moderators(user, session, id):
@@ -793,7 +793,7 @@ responses:
 
 
 @app.post('/company/<int:id>/moderators')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level # Only admins can manage moderators
 @after_token_required
 def update_company_moderators(user, session, id):
@@ -894,7 +894,7 @@ responses:
 
 
 @app.delete('/company/<int:id>/moderators')
-@token_required
+@token_required(app, redis_client, Session)
 @company_owner_level # Only admins can manage moderators
 @after_token_required
 def delete_company_moderators(user, session, id):
@@ -977,7 +977,7 @@ responses:
 
 
 @app.post('/company/<int:id>/subscribe')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def subscribe_to_company(current_user, session, id):
     """
@@ -1052,7 +1052,7 @@ responses:
 
 
 @app.post('/company/<int:id>/unsubscribe')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def unsubscribe_from_company(current_user, session, id):
     """
@@ -1126,7 +1126,7 @@ responses:
 
 
 @app.get('/company/<int:id>/videos')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_company_videos(currrent_user, session, id):
     """

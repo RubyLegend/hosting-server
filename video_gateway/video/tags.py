@@ -1,11 +1,11 @@
 from flask import jsonify
 from ..database.tags import Tags
-from .. import app, Session
-from ..user.functions import token_required, after_token_required
+from .. import app, Session, redis_client
+from ..helpers.functions import token_required, after_token_required
 
 
 @app.get('/video/tags')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_all_tags(current_user, session):
     """

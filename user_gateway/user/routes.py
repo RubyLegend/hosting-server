@@ -1,10 +1,12 @@
+from .. import app, redis_client, Session
 from .users import *
 from flask import Flask, request, jsonify, redirect, url_for
 import datetime
 import bcrypt
 from sqlalchemy import exc
-from .. import app, redis_client, Session
-from .functions import generate_token, token_required, after_token_required, company_owner_level, has_admin_access, has_company_owner_access, has_moderator_access, get_access_level_by_name
+from ..helpers.functions import (generate_token, token_required, after_token_required,
+                        has_admin_access, has_company_owner_access,
+                        has_moderator_access, get_access_level_by_name)
 from ..database.users import Users
 from ..database.companies import Companies
 from ..database.accessLevels import AccessLevels
@@ -83,7 +85,7 @@ responses:
     try:
         user = session.query(Users).filter_by(LoginUser=username).first()
         if user and user.IsActive and bcrypt.checkpw(password.encode('utf-8'), user.Password.encode('utf-8')):
-            token = generate_token(user.IdUser)
+            token = generate_token(app, redis_client, user.IdUser)
             is_admin = has_admin_access(user, session)
             is_mod = has_moderator_access(user, session)
             is_comp_owner = has_company_owner_access(user, session)
@@ -105,7 +107,7 @@ responses:
 
 
 @app.post("/profile/logout")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def logout(current_user, session):
     """
@@ -141,7 +143,7 @@ def profile_redir():
 
 
 @app.get("/profile")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def profile(current_user, session):
     """
@@ -250,7 +252,7 @@ responses:
 
 
 @app.get("/profile/subscriptions")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_profile_subscriptions(current_user, session):
     """

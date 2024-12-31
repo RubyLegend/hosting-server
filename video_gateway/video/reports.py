@@ -1,6 +1,6 @@
-from .. import app
+from .. import app, redis_client, Session
 from flask import Flask, jsonify
-from ..user.functions import token_required, after_token_required, moderator_level, get_access_level_by_name
+from ..helpers.functions import token_required, after_token_required, moderator_level, get_access_level_by_name
 from ..database.userRoles import UserRoles
 from ..database.reports import Reports
 from ..database.comments import Comments
@@ -12,7 +12,7 @@ app: Flask
 
 
 @app.get('/reports')
-@token_required
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def get_reports(user, session):
@@ -109,7 +109,7 @@ def get_reports(user, session):
 
 
 @app.post('/reports/<int:id>/approve')
-@token_required
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def approve_report(user, session, id):
@@ -161,7 +161,7 @@ def approve_report(user, session, id):
 
 
 @app.post('/reports/<int:id>/dismiss')
-@token_required
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def dismiss_report(user, session, id):

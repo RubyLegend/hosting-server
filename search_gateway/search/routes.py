@@ -1,6 +1,6 @@
 import datetime
-from .. import app, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
-from ..user.functions import token_required, after_token_required
+from .. import app, redis_client, Session, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
+from ..helpers.functions import token_required, after_token_required
 from ..database.users import Users
 from ..database.media import Media
 from ..database.tags import Tags
@@ -13,7 +13,7 @@ app: Flask
 
 
 @app.post('/search')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def search(user, session):
     """
@@ -186,7 +186,7 @@ def search(user, session):
 
 
 @app.get('/search/history')
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_search_history(user, session):
     """

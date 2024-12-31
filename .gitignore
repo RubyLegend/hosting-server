@@ -1,8 +1,8 @@
 .env
 __pycache__
-uploads/
-previews/*
-!previews/default_audio.jpg
-!previews/default_video.jpg
-logos/*
-!logos/default_logo.jpg
+video_gateway/uploads/
+video_gateway/previews/*
+!video_gateway/previews/default_audio.jpg
+!video_gateway/previews/default_video.jpg
+company_gateway/logos/*
+!company_gateway/logos/default_logo.jpg
