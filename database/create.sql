@@ -86,6 +86,12 @@ create table RatingTypes(
   RatingFactor int not null
 );
 
+LOCK TABLES `RatingTypes` WRITE;
+/*!40000 ALTER TABLE `RatingTypes` DISABLE KEYS */;
+INSERT INTO `RatingTypes` VALUES (1,'None',0),(2,'Like',1),(3,'Dislike',-1);
+/*!40000 ALTER TABLE `RatingTypes` ENABLE KEYS */;
+UNLOCK TABLES;
+
 create table Ratings(
   IdRating int not null primary key auto_increment,
   IdUser int,
@@ -123,7 +129,11 @@ create table AccessLevels(
   AccessLevel int not null default 1
 );
 
-insert into AccessLevels(AccessName, AccessLevel) values ("Admin", 10), ("Moderator", 3), ("Company Owner", 5);
+LOCK TABLES `AccessLevels` WRITE;
+/*!40000 ALTER TABLE `AccessLevels` DISABLE KEYS */;
+INSERT INTO `AccessLevels` VALUES (4,'Admin',10),(2,'Moderator',3),(3,'Company Owner',5),(1,'User',1);
+/*!40000 ALTER TABLE `AccessLevels` ENABLE KEYS */;
+UNLOCK TABLES;
 
 create table UserRoles(
   IdUser int,
@@ -138,6 +148,13 @@ create table Tags(
   IdTag int not null primary key auto_increment,
   TagName varchar(50) not null
 );
+
+LOCK TABLES `Tags` WRITE;
+/*!40000 ALTER TABLE `Tags` DISABLE KEYS */;
+INSERT INTO `Tags` VALUES (1,'Корпорація'),(3,'Компанія'),(5,'Менеджмент'),(6,'Лідерство'),(7,'Інновації'),(8,'Стратегія'),(9,'Економіка'),(10,'Фінанси'),(11,'Маркетинг'),(12,'Підприємництво'),(13,'HR'),(14,'Технології'),(15,'Команда'),(16,'Співробітники'),(17,'Корпоративна Зустріч'),(18,'Тренінг'),(19,'Мотивація'),(20,'Новинки'),(21,'Продукти'),(22,'Послуги'),(23,'Технологічний Прогрес'),(24,'Соціальна Відповідальність'),(25,'Успіх'),(26,'Довіра'),(27,'Надійність'),(28,'Україна'),(29,'Міжнародний Бізнес'),(30,'ІТ'),(31,'Фармацевтика'),(32,'Агробізнес');
+/*!40000 ALTER TABLE `Tags` ENABLE KEYS */;
+UNLOCK TABLES;
+
 
 create table MediaTagsConnector(
   IdConnection int not null primary key auto_increment,

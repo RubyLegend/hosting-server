@@ -1,0 +1,81 @@
+services:
+  nginx:
+    build:
+      context: ./proxy_server # Path to the Nginx Dockerfile
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080" # Map host port 8080 to container port 8080
+    depends_on:
+      - api-service
+      - user-service
+      - video-service
+      - company-service
+      - search-service
+      - redis
+    restart: always
+  redis: # Redis service definition
+    image: redis:latest
+  mysql:
+    image: mysql:latest
+    env_file: ./mysql/.env
+    ports:
+      - '3306:3306'
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+  api-service:
+    build: 
+      context: ./api_gateway
+    environment:
+      USER_SERVICE_URL: http://user-service:9000
+      VIDEO_SERVICE_URL: http://video-service:9000
+      COMPANY_SERVICE_URL: http://company-service:9000
+      SEARCH_SERVICE_URL: http://search-service:9000
+    stop_signal: SIGINT
+    depends_on:
+      - user-service
+      - video-service
+      - company-service
+      - search-service
+  user-service:
+    build: 
+      context: .
+      dockerfile: ./user_gateway/Dockerfile
+    stop_signal: SIGINT
+    env_file: ./user_gateway/.env
+    depends_on:
+      - redis
+      - mysql
+  video-service:
+    user: "1000:1000"
+    build: 
+      context: .
+      dockerfile: ./video_gateway/Dockerfile
+    stop_signal: SIGINT
+    env_file: ./video_gateway/.env
+    depends_on:
+      - redis
+      - mysql
+    volumes:
+      - ./video_gateway/uploads:/api-flask/uploads
+      - ./video_gateway/previews:/api-flask/previews
+  company-service:
+    user: "1000:1000"
+    build: 
+      context: .
+      dockerfile: ./company_gateway/Dockerfile
+    stop_signal: SIGINT
+    env_file: ./company_gateway/.env
+    volumes:
+      - ./company_gateway/logos:/api-flask/logos
+    depends_on:
+      - redis
+      - mysql
+  search-service:
+    build: 
+      context: .
+      dockerfile: ./search_gateway/Dockerfile
+    stop_signal: SIGINT
+    env_file: ./search_gateway/.env
+    depends_on:
+      - redis
+      - mysql

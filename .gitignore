@@ -6,3 +6,6 @@ video_gateway/previews/*
 !video_gateway/previews/default_video.jpg
 company_gateway/logos/*
 !company_gateway/logos/default_logo.jpg
+mysql/data/*
+*/.env
+

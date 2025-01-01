@@ -41,9 +41,11 @@ swagger = Swagger(app, template=swagger_template)
 # Redis configuration
 redis_host = os.getenv("REDIS_HOST") or "localhost"
 redis_port = int(os.getenv("REDIS_PORT") or 6379)
+redis_username = os.getenv("REDIS_USER") or "none"
+redis_password = os.getenv("REDIS_PASSWORD") or "none"
 redis_db = int(os.getenv("REDIS_DB") or 0)
 
-redis_client = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
+redis_client = redis.Redis(host=redis_host, port=redis_port, db=redis_db, username=redis_username, password=redis_password)
 
 # Database connection
 db_user = os.getenv("DB_USER")

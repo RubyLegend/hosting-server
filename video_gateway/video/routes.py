@@ -1,4 +1,4 @@
-from flask import Flask, Response, request, jsonify, send_from_directory
+from flask import Flask, Response, request, jsonify, send_from_directory, redirect, url_for
 import datetime
 import os
 import re
@@ -525,7 +525,7 @@ responses:
         unique_viewers = session.query(func.count(distinct(ViewHistory.IdUser))).filter(ViewHistory.IdMedia == id).scalar()
         unique_viewers = int(unique_viewers) if unique_viewers is not None else 0 # Explicitly convert to int
 
-        temp_link = generate_temporary_link(id, media.NameV)
+        temp_link = generate_temporary_link(id, media.NameV, request.headers['host'])
 
         tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
         likes, dislikes, user_rating_value = get_rating_counts(session, id, user.IdUser)
@@ -790,7 +790,7 @@ responses:
         if not content_type:
             content_type = 'application/octet-stream'  # Default if type is unknown
 
-        resp = Response(chunk, 206, content_type=content_type, direct_passthrough=True)  # Set Content-Disposition header
+        resp = Response(chunk, 206, content_type=content_type, direct_passthrough=True)
         resp.headers.add('Content-Range', 'bytes {0}-{1}/{2}'.format(start, start + length - 1, file_size))
         return resp
     except Exception as e:
@@ -799,6 +799,10 @@ responses:
     finally:
         session.close()
 
+
+@app.get("/video/")
+def redirect_video():
+    return redirect("/video", 302)
 
 @app.get('/video')
 @token_required(app, redis_client, Session)
