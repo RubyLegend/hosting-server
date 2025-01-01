@@ -4,6 +4,7 @@ from ..helpers.functions import (token_required, company_owner_level,
     user_or_admin_required, user_has_access_level,
     get_access_level_by_name, after_token_required)
 from flask import Flask, request, jsonify
+from sqlalchemy.exc import IntegrityError
 import bcrypt
 import redis
 
@@ -241,7 +242,9 @@ responses:
     2. Missmatch between old password entered and in database. \n\
     3. Entered only new password or old password."
   403:
-    description: Forbidden. User is not authorized to access this user's' information (requires admin access).
+    description: 
+      - Forbidden. User is not authorized to access this user's' information (requires admin access).
+      - Forbidden. Username is already taken.
   404:
     description: User not found.
   500:
@@ -283,6 +286,9 @@ responses:
 
         session.commit()
         return jsonify({'message': 'User updated successfully'}), 200
+
+    except IntegrityError as e:
+        return jsonify({"message": "This username is already taken."}), 403
 
     except Exception as e:
         session.rollback()

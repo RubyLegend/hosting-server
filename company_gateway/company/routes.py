@@ -367,6 +367,9 @@ def delete_company(user, session, id):
         # 2. Delete Comments
         for video in company.media:
             for comment in video.comments:
+                # 2.5 Remove all reports
+                for report in comment.reports:
+                    session.delete(report)
                 session.delete(comment)
             # 3. Delete ratings
             for rating in video.ratings:

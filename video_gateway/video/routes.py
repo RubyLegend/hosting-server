@@ -383,6 +383,8 @@ responses:
             session.delete(rating)
 
         for comment in video.comments:
+            for report in comment.reports:
+                session.delete(report)
             session.delete(comment)
 
         for view in video.view_history:

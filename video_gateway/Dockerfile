@@ -18,4 +18,4 @@ EXPOSE 9000
 
 # Define the command to run the Flask application using Gunicorn
 # CMD ["flask", "run"]
-CMD ["gunicorn", "--chdir", "api-flask", "api-flask.app:app", "-b", "0.0.0.0:9000", "-w", "4"]
+CMD ["gunicorn", "--chdir", "api-flask", "api-flask.app:app", "-b", "0.0.0.0:9000", "-w", "4", "--timeout", "600"]
