@@ -47,7 +47,6 @@ responses:
     content:
       application/json:
         schema:
-          # $ref: "#/components/schemas/ProfileLoginResponse"
           type: object
           properties:
             user_id:

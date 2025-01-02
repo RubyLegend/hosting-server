@@ -93,10 +93,10 @@ def get_reports(user, session):
                 "report_id": report.IdReport,
                 "report_time": report.ReportTime.isoformat() if report.ReportTime else None,
                 "comment_id": report.IdComment,
-                "user_id": report.IdUser,
+                "user_id": report.comments.users.IdUser,
                 "report_reason": report.ReportReason,
                 "comment": report.comments.TextComment,
-                "user_name": report.users.NameUser + " " + report.users.Surname,
+                "user_name": report.comments.users.NameUser + " " + report.comments.users.Surname,
                 "video_id": report.comments.media.IdMedia,
                 "video_name": report.comments.media.NameV,
             })

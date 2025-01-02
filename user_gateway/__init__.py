@@ -11,6 +11,7 @@ load_dotenv()
 
 app: Flask = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+app.config["TOKEN_TIMEOUT"] = os.getenv("TOKEN_TIMEOUT")
 swagger_template = {
     "uiversion": 3,
     "openapi": "3.0.3",

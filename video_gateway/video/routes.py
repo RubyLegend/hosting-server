@@ -303,7 +303,9 @@ responses:
                             pass
                         except Exception as e:
                             app.logger.exception(f"Error removing old preview: {e}")
+                app.logger.info("[DEBUG] Saving new preview for a video.")
                 preview_file.save(preview_path)
+                app.logger.info("[DEBUG] Saved.")
                 new_preview = MediaPreview(PreviewPath=preview_path)
                 session.add(new_preview)
                 session.commit()
@@ -527,7 +529,9 @@ responses:
         unique_viewers = session.query(func.count(distinct(ViewHistory.IdUser))).filter(ViewHistory.IdMedia == id).scalar()
         unique_viewers = int(unique_viewers) if unique_viewers is not None else 0 # Explicitly convert to int
 
-        temp_link = generate_temporary_link(id, media.NameV, request.headers['host'])
+        _, extension = os.path.splitext(media.VideoPath)
+
+        temp_link = generate_temporary_link(id, media.NameV + extension, request.headers['host'])
 
         tags = [{"id": tag.IdTag, "name": tag.TagName} for tag in media.tags] # Get tags
         likes, dislikes, user_rating_value = get_rating_counts(session, id, user.IdUser)

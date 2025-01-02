@@ -237,10 +237,10 @@ responses:
               format: date-time
               description: The birthday of the user in ISO 8601 format.
   400:
-    description: "Possible issues: \n\
-    1. No data provided for JSON.\n\
-    2. Missmatch between old password entered and in database. \n\
-    3. Entered only new password or old password."
+    description:
+      - No data provided for JSON.
+      - Missmatch between old password entered and in database.
+      - Entered only new password or old password."
   403:
     description: 
       - Forbidden. User is not authorized to access this user's' information (requires admin access).

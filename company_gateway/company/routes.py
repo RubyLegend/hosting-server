@@ -310,7 +310,8 @@ responses:
                 prev_logo = company.companyLogo
                 company.IdCompanyLogo = id_logo
                 session.commit()
-                session.delete(prev_logo)
+                if prev_logo.IdCompanyLogo != 1:
+                    session.delete(prev_logo)
             else:
                 return jsonify({'message': 'Invalid image file type'}), 400
         session.commit()

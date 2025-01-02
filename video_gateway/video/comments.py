@@ -73,16 +73,15 @@ responses:
 
         comments = session.query(Comments).filter_by(IdMedia=v).all()
 
-        has_weak_moderator = has_moderator_access(user, session)
-        has_strong_moderator = has_moderator_access(user, session, False)
+        has_weak_moderator = has_moderator_access(user, session, media.IdCompany)
+        has_strong_moderator = has_moderator_access(user, session, media.IdCompany, False)
 
         comment_list = []
         for comment in comments:
-            comment_user = session.query(Users).filter_by(IdUser=comment.IdUser).first()
             comment_list.append({
                 "id": comment.IdComment,
                 "user_id": comment.IdUser,
-                "user_login": comment_user.NameUser + " " + comment_user.Surname if user else None,
+                "user_login": comment.users.NameUser + " " + comment.users.Surname if comment.users.NameUser or comment.users.Surname else "No Name",
                 "text": comment.TextComment,
                 "date": comment.Date.isoformat() if comment.Date else None,
                 "can_delete": has_weak_moderator or comment.IdUser == user.IdUser,
@@ -99,7 +98,7 @@ responses:
 @app.post('/video/<int:v>/comments')
 @token_required(app, redis_client, Session)
 @after_token_required
-def add_video_comment(current_user, session, v):
+def add_video_comment(user, session, v):
     """
 Adds a new comment to a video.
 ---
@@ -175,7 +174,7 @@ responses:
             return jsonify({'message': 'Video not found'}), 404
 
         new_comment = Comments(
-            IdUser=current_user.IdUser,
+            IdUser=user.IdUser,
             IdMedia=v,
             TextComment=text_comment,
             Date=datetime.now()
@@ -183,14 +182,12 @@ responses:
         session.add(new_comment)
         session.flush()
 
-        user = session.query(Users).filter_by(IdUser=current_user.IdUser).first()
-
         session.commit()
         return jsonify({'message': 'Comment added successfully', 
                         'comment': {
                             'id': new_comment.IdComment,
                             'user_id': new_comment.IdUser,
-                            'user_login': user.LoginUser if user else None,
+                            'user_login': user.NameUser + " " + user.Surname if user.NameUser or user.Surname else "No Name",
                             'text': new_comment.TextComment,
                             'date': new_comment.Date.isoformat()
                         }}), 201

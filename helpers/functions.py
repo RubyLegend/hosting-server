@@ -11,13 +11,13 @@ def generate_token(app: Flask, redis_client: redis.Redis, user_id):
     """Generates a JWT token for a given user ID."""
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60),  # Token expiration time
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])),  # Token expiration time
         'iat': datetime.datetime.utcnow()  # Issued at time
     }
     token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
     # Store the token in Redis with an expiration time
-    redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=60), token)
+    redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])), token)
 
     return token
 
@@ -68,8 +68,8 @@ def token_required(app: Flask, redis_client: redis.Redis, Session):
                     if current_auth_token is not None and current_auth_token != token:
                         # If tokens mismatch - then we have second authentication
                         # Invalidating last one
-                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), "INVALID")
-                        redis_client.setex(f"token:{current_auth_token}", datetime.timedelta(minutes=30), str(user_id))
+                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])), "INVALID")
+                        redis_client.setex(f"token:{current_auth_token}", datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])), str(user_id))
                         return jsonify({'message': 'Token has expired!'}), 401
                 else:
                     try:
@@ -79,8 +79,8 @@ def token_required(app: Flask, redis_client: redis.Redis, Session):
                         if not user or not user.IsActive:
                             return jsonify({'message': 'User not found'}), 401
 
-                        redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=60), token)
-                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=60), str(user_id))
+                        redis_client.setex(f"user:{user_id}:token", datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])), token)
+                        redis_client.setex(f"token:{token}", datetime.timedelta(minutes=int(app.config['TOKEN_TIMEOUT'])), str(user_id))
                     except jwt.ExpiredSignatureError:
                         return jsonify({'message': 'Token has expired!'}), 401
                     except jwt.InvalidTokenError:
@@ -100,13 +100,21 @@ def get_access_level_by_name(session, access_name):
     access_level_record = session.query(AccessLevels).filter_by(AccessName=access_name).first()
     return access_level_record if access_level_record else None
 
-def user_has_access_level(user, required_level, session, weak_comparison=True):
+def user_has_access_level(user, required_level, session, weak_comparison=True, company_id=None):
     """Helper function to check if a user has at least the required access level."""
     for role in user.user_roles:  # Iterate through user's roles
         if role.access_levels == required_level:
-            return True
+            if company_id is not None:
+                if role.IdCompany == company_id:
+                    return True
+            else:
+                return True
         elif weak_comparison and role.access_levels.AccessLevel >= required_level.AccessLevel:
-            return True
+            if company_id is not None:
+                if role.IdCompany == company_id:
+                    return True
+            else:
+                return True
     return False
 
 def admin_level(f):
@@ -171,9 +179,9 @@ def has_admin_access(user, session):
     return user_has_access_level(user, get_access_level_by_name(session, "Admin"), session)
 
 
-def has_moderator_access(user, session, weak_comparison=True):
+def has_moderator_access(user, session, company_id=None, weak_comparison=True):
     """Checks if the user has moderator or higher access."""
-    return user_has_access_level(user, get_access_level_by_name(session, "Moderator"), session, weak_comparison)
+    return user_has_access_level(user, get_access_level_by_name(session, "Moderator"), session, weak_comparison, company_id)
 
 
 def has_company_owner_access(user, session):

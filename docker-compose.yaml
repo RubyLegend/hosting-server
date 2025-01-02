@@ -22,6 +22,12 @@ services:
       - '3306:3306'
     volumes:
       - ./mysql/data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
   api-service:
     build: 
       context: ./api_gateway
@@ -43,8 +49,11 @@ services:
     stop_signal: SIGINT
     env_file: ./user_gateway/.env
     depends_on:
-      - redis
-      - mysql
+      redis:
+        condition: service_started
+      mysql:
+          condition: service_healthy
+          restart: true
   video-service:
     user: "1000:1000"
     build: 
@@ -53,8 +62,11 @@ services:
     stop_signal: SIGINT
     env_file: ./video_gateway/.env
     depends_on:
-      - redis
-      - mysql
+      redis:
+        condition: service_started
+      mysql:
+          condition: service_healthy
+          restart: true
     volumes:
       - ./video_gateway/uploads:/api-flask/uploads
       - ./video_gateway/previews:/api-flask/previews
@@ -68,8 +80,11 @@ services:
     volumes:
       - ./company_gateway/logos:/api-flask/logos
     depends_on:
-      - redis
-      - mysql
+      redis:
+        condition: service_started
+      mysql:
+          condition: service_healthy
+          restart: true
   search-service:
     build: 
       context: .
@@ -77,5 +92,8 @@ services:
     stop_signal: SIGINT
     env_file: ./search_gateway/.env
     depends_on:
-      - redis
-      - mysql
+      redis:
+        condition: service_started
+      mysql:
+          condition: service_healthy
+          restart: true
