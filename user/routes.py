@@ -123,7 +123,7 @@ def login():
 
 
 @app.post("/profile/logout")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def logout(current_user, session):
     """
@@ -159,7 +159,7 @@ def profile_redir():
 
 
 @app.get("/profile")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def profile(current_user, session):
     """
@@ -273,7 +273,7 @@ def profile(current_user, session):
 
 
 @app.get("/profile/subscriptions")
-@token_required
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_profile_subscriptions(current_user, session):
     """
