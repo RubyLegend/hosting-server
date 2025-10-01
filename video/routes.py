@@ -578,7 +578,7 @@ def get_video_link(user, session, id):
             int(unique_viewers) if unique_viewers is not None else 0
         )  # Explicitly convert to int
 
-        _, extension = os.path.splittext(media.VideoPath)
+        _, extension = os.path.splitext(media.VideoPath)
 
         temp_link = generate_temporary_link(
             id, media.NameV + extension, request.headers["host"]

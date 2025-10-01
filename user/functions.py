@@ -15,7 +15,7 @@ app: Flask
 redis_client: redis.Redis
 
 
-def generate_token(user_id):
+def generate_token(app, redis_client, user_id):
     """Generates a JWT token for a given user ID."""
     payload = {
         "user_id": user_id,
@@ -264,10 +264,14 @@ def has_admin_access(user, session):
     )
 
 
-def has_moderator_access(user, session, weak_comparison=True):
+def has_moderator_access(user, session, company_id=None, weak_comparison=True):
     """Checks if the user has moderator or higher access."""
     return user_has_access_level(
-        user, get_access_level_by_name(session, "Moderator"), session, weak_comparison
+        user,
+        get_access_level_by_name(session, "Moderator"),
+        session,
+        weak_comparison,
+        company_id,
     )
 
 

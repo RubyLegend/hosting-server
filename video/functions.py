@@ -69,7 +69,7 @@ def get_unique_filepath_preview(filepath, session):
 LINK_EXPIRATION_SECONDS = 3600
 
 
-def generate_temporary_link(media_id, filename):
+def generate_temporary_link(media_id, filename, host):
     """Generates a temporary link with filename."""
     link_id = str(uuid.uuid4())
     expiration_time = datetime.datetime.utcnow() + datetime.timedelta(
