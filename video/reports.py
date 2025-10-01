@@ -1,6 +1,11 @@
-from .. import app
+from .. import app, redis_client, Session
 from flask import Flask, jsonify
-from ..user.functions import token_required, after_token_required, moderator_level, get_access_level_by_name
+from ..user.functions import (
+    token_required,
+    after_token_required,
+    moderator_level,
+    get_access_level_by_name,
+)
 from ..database.userRoles import UserRoles
 from ..database.reports import Reports
 from ..database.comments import Comments
@@ -11,8 +16,8 @@ from ..database.accessLevels import AccessLevels
 app: Flask
 
 
-@app.get('/reports')
-@token_required
+@app.get("/reports")
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def get_reports(user, session):
@@ -69,13 +74,18 @@ def get_reports(user, session):
         moderator_level = get_access_level_by_name(session, "Moderator")
         if not moderator_level:
             app.logger.error("Moderator Access Level not found in database")
-            return jsonify({'message': 'Internal server error'}), 500
+            return jsonify({"message": "Internal server error"}), 500
 
         # Get companies where the current user is a moderator
-        moderated_companies = session.query(UserRoles).join(UserRoles.access_levels).filter(
-            UserRoles.IdUser == user.IdUser,
-            AccessLevels.AccessLevel >= moderator_level.AccessLevel
-        ).all()
+        moderated_companies = (
+            session.query(UserRoles)
+            .join(UserRoles.access_levels)
+            .filter(
+                UserRoles.IdUser == user.IdUser,
+                AccessLevels.AccessLevel >= moderator_level.AccessLevel,
+            )
+            .all()
+        )
 
         if not moderated_companies:
             return jsonify([]), 200
@@ -83,33 +93,42 @@ def get_reports(user, session):
         company_ids = [mc.IdCompany for mc in moderated_companies]
 
         # Get reports for comments from videos from moderated companies
-        reports = session.query(Reports).join(Reports.comments)\
-                         .join(Comments.media).join(Media.companies)\
-                         .filter(Companies.IdCompany.in_(company_ids)).all()
+        reports = (
+            session.query(Reports)
+            .join(Reports.comments)
+            .join(Comments.media)
+            .join(Media.companies)
+            .filter(Companies.IdCompany.in_(company_ids))
+            .all()
+        )
 
         report_list = []
         for report in reports:
-            report_list.append({
-                "report_id": report.IdReport,
-                "report_time": report.ReportTime.isoformat() if report.ReportTime else None,
-                "comment_id": report.IdComment,
-                "user_id": report.IdUser,
-                "report_reason": report.ReportReason,
-                "comment": report.comments.TextComment,
-                "user_name": report.users.NameUser + " " + report.users.Surname,
-                "video_id": report.comments.media.IdMedia,
-                "video_name": report.comments.media.NameV,
-            })
+            report_list.append(
+                {
+                    "report_id": report.IdReport,
+                    "report_time": (
+                        report.ReportTime.isoformat() if report.ReportTime else None
+                    ),
+                    "comment_id": report.IdComment,
+                    "user_id": report.IdUser,
+                    "report_reason": report.ReportReason,
+                    "comment": report.comments.TextComment,
+                    "user_name": report.users.NameUser + " " + report.users.Surname,
+                    "video_id": report.comments.media.IdMedia,
+                    "video_name": report.comments.media.NameV,
+                }
+            )
 
         return jsonify(report_list), 200
 
     except Exception as e:
         app.logger.exception(f"Error retrieving reports: {e}")
-        return jsonify({'message': 'Internal server error'}), 500
+        return jsonify({"message": "Internal server error"}), 500
 
 
-@app.post('/reports/<int:id>/approve')
-@token_required
+@app.post("/reports/<int:id>/approve")
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def approve_report(user, session, id):
@@ -137,31 +156,42 @@ def approve_report(user, session, id):
         description: Internal server error.
     """
     try:
-        report = session.query(Reports).join(Reports.comments).filter(Reports.IdReport==id).first()
+        report = (
+            session.query(Reports)
+            .join(Reports.comments)
+            .filter(Reports.IdReport == id)
+            .first()
+        )
         if not report:
-            return jsonify({'message': 'Report not found'}), 404
+            return jsonify({"message": "Report not found"}), 404
 
         comment_to_delete = report.comments  # Get the related comment
         if not comment_to_delete:
-            return jsonify({'message': 'Comment associated with this report not found'}), 404
+            return (
+                jsonify({"message": "Comment associated with this report not found"}),
+                404,
+            )
 
-        session.delete(report) # Delete the report
+        session.delete(report)  # Delete the report
         linked_reports = comment_to_delete.reports
         for report_ in linked_reports:
             session.delete(report_)
         session.delete(comment_to_delete)
         session.commit()
 
-        return jsonify({'message': 'Report approved and comment deleted successfully'}), 200
+        return (
+            jsonify({"message": "Report approved and comment deleted successfully"}),
+            200,
+        )
 
     except Exception as e:
         session.rollback()
         app.logger.exception(f"Error approving report: {e}")
-        return jsonify({'message': 'Internal server error'}), 500
+        return jsonify({"message": "Internal server error"}), 500
 
 
-@app.post('/reports/<int:id>/dismiss')
-@token_required
+@app.post("/reports/<int:id>/dismiss")
+@token_required(app, redis_client, Session)
 @moderator_level
 @after_token_required
 def dismiss_report(user, session, id):
@@ -191,15 +221,14 @@ def dismiss_report(user, session, id):
     try:
         report = session.query(Reports).filter_by(IdReport=id).first()
         if not report:
-            return jsonify({'message': 'Report not found'}), 404
+            return jsonify({"message": "Report not found"}), 404
 
         session.delete(report)  # Delete the report
         session.commit()
 
-        return jsonify({'message': 'Report dismissed successfully'}), 200
+        return jsonify({"message": "Report dismissed successfully"}), 200
 
     except Exception as e:
         session.rollback()
         app.logger.exception(f"Error dismissing report: {e}")
-        return jsonify({'message': 'Internal server error'}), 500
-
+        return jsonify({"message": "Internal server error"}), 500

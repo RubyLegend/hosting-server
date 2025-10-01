@@ -1,5 +1,11 @@
 import datetime
-from .. import app, ALLOWED_VIDEO_EXTENSIONS, ALLOWED_AUDIO_EXTENSIONS
+from .. import (
+    app,
+    redis_client,
+    Session,
+    ALLOWED_VIDEO_EXTENSIONS,
+    ALLOWED_AUDIO_EXTENSIONS,
+)
 from ..user.functions import token_required, after_token_required
 from ..database.users import Users
 from ..database.media import Media
@@ -12,8 +18,8 @@ from sqlalchemy import func, or_, and_
 app: Flask
 
 
-@app.post('/search')
-@token_required
+@app.post("/search")
+@token_required(app, redis_client, Session)
 @after_token_required
 def search(user, session):
     """
@@ -74,14 +80,21 @@ def search(user, session):
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'message': 'No data provided'}), 400
-        search_types = data.get('type', [])
-        tag_ids = data.get('tags', [])
-        search_text = data.get('request', '')
+            return jsonify({"message": "No data provided"}), 400
+        search_types = data.get("type", [])
+        tag_ids = data.get("tags", [])
+        search_text = data.get("request", "")
 
         # Adding search_text to database
-        existing_search = session.query(SearchHistory).filter_by(SearchQuery=search_text).first()
-        user_searches = session.query(SearchHistory).filter_by(IdUser=user.IdUser).order_by(SearchHistory.SearchTime.desc()).all()
+        existing_search = (
+            session.query(SearchHistory).filter_by(SearchQuery=search_text).first()
+        )
+        user_searches = (
+            session.query(SearchHistory)
+            .filter_by(IdUser=user.IdUser)
+            .order_by(SearchHistory.SearchTime.desc())
+            .all()
+        )
         count_of_searches = len(user_searches)
 
         if count_of_searches >= 10 and not existing_search:
@@ -97,7 +110,7 @@ def search(user, session):
                 search = SearchHistory(
                     IdUser=user.IdUser,
                     SearchQuery=search_text,
-                    SearchTime=datetime.datetime.now()
+                    SearchTime=datetime.datetime.now(),
                 )
                 session.add(search)
             else:
@@ -105,88 +118,124 @@ def search(user, session):
             session.commit()
 
         if not isinstance(search_types, list):
-            return jsonify({'message': 'Type must be a list'}), 400
+            return jsonify({"message": "Type must be a list"}), 400
 
         if not isinstance(tag_ids, list):
-            return jsonify({'message': 'Tags must be a list'}), 400
+            return jsonify({"message": "Tags must be a list"}), 400
 
         if not all(isinstance(x, int) for x in tag_ids):
-            return jsonify({'message': 'Tags must be integer'}), 400
+            return jsonify({"message": "Tags must be integer"}), 400
 
-        results = {
-            "user": [],
-            "video": [],
-            "audio": [],
-            "company": []
-        }
+        results = {"user": [], "video": [], "audio": [], "company": []}
 
         if not search_types:
-            search_types = ["user", "video", "audio", "company"] # Search all types
+            search_types = ["user", "video", "audio", "company"]  # Search all types
 
         if "user" in search_types:
-            user_results = session.query(Users).filter(
-                or_(
-                    Users.NameUser.ilike(f"%{search_text}%"),
-                    Users.Surname.ilike(f"%{search_text}%"),
-                    Users.LoginUser.ilike(f"%{search_text}%"),
-                    Users.Email.ilike(f"%{search_text}%")
-                ),
-                Users.IsActive
-            ).all()
-            results["user"] = [{
-                "user_id": user.IdUser,
-                "name": user.NameUser + " " + user.Surname,
-                "email": user.Email} for user in user_results]
+            user_results = (
+                session.query(Users)
+                .filter(
+                    or_(
+                        Users.NameUser.ilike(f"%{search_text}%"),
+                        Users.Surname.ilike(f"%{search_text}%"),
+                        Users.LoginUser.ilike(f"%{search_text}%"),
+                        Users.Email.ilike(f"%{search_text}%"),
+                    ),
+                    Users.IsActive,
+                )
+                .all()
+            )
+            results["user"] = [
+                {
+                    "user_id": user.IdUser,
+                    "name": user.NameUser + " " + user.Surname,
+                    "email": user.Email,
+                }
+                for user in user_results
+            ]
 
         if "video" in search_types or "audio" in search_types:
             media_query = session.query(Media).filter(
                 or_(
                     Media.NameV.ilike(f"%{search_text}%"),
-                    Media.DescriptionV.ilike(f"%{search_text}%")
-                ))
+                    Media.DescriptionV.ilike(f"%{search_text}%"),
+                )
+            )
 
             if tag_ids:
-                media_query = media_query.join(Media.tags).filter(Tags.IdTag.in_(tag_ids))
+                media_query = media_query.join(Media.tags).filter(
+                    Tags.IdTag.in_(tag_ids)
+                )
 
             # Splitting into video and audio
             media_results = media_query.all()
 
             if "video" in search_types:
-                video_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_VIDEO_EXTENSIONS])).all()
-                results["video"] = [{
-                    "id": video.IdMedia,
-                    "name": video.NameV,
-                    "description": video.DescriptionV,
-                    "upload_time": video.UploadTime.isoformat(),
-                    "company_id": video.companies.IdCompany,
-                    "company_name": video.companies.Name} for video in video_results]
+                video_results = media_query.filter(
+                    or_(
+                        *[
+                            Media.VideoPath.ilike(f"%{ext}")
+                            for ext in ALLOWED_VIDEO_EXTENSIONS
+                        ]
+                    )
+                ).all()
+                results["video"] = [
+                    {
+                        "id": video.IdMedia,
+                        "name": video.NameV,
+                        "description": video.DescriptionV,
+                        "upload_time": video.UploadTime.isoformat(),
+                        "company_id": video.companies.IdCompany,
+                        "company_name": video.companies.Name,
+                    }
+                    for video in video_results
+                ]
 
             if "audio" in search_types:
-                audio_results = media_query.filter(or_(*[Media.VideoPath.ilike(f"%{ext}") for ext in ALLOWED_AUDIO_EXTENSIONS])).all()
-                results["audio"] = [{
-                    "id": audio.IdMedia,
-                    "name": audio.NameV,
-                    "description": audio.DescriptionV,
-                    "upload_time": audio.UploadTime.isoformat(),
-                    "company_id": audio.companies.IdCompany,
-                    "company_name": audio.companies.Name} for audio in audio_results]
+                audio_results = media_query.filter(
+                    or_(
+                        *[
+                            Media.VideoPath.ilike(f"%{ext}")
+                            for ext in ALLOWED_AUDIO_EXTENSIONS
+                        ]
+                    )
+                ).all()
+                results["audio"] = [
+                    {
+                        "id": audio.IdMedia,
+                        "name": audio.NameV,
+                        "description": audio.DescriptionV,
+                        "upload_time": audio.UploadTime.isoformat(),
+                        "company_id": audio.companies.IdCompany,
+                        "company_name": audio.companies.Name,
+                    }
+                    for audio in audio_results
+                ]
 
         if "company" in search_types:
-            company_results = session.query(Companies).filter(Companies.Name.ilike(f"%{search_text}%")).all()
-            results["company"] = [{
-                "company_id": company.IdCompany,
-                "name": company.Name,
-                "about": company.About} for company in company_results]
+            company_results = (
+                session.query(Companies)
+                .filter(Companies.Name.ilike(f"%{search_text}%"))
+                .all()
+            )
+            results["company"] = [
+                {
+                    "company_id": company.IdCompany,
+                    "name": company.Name,
+                    "about": company.About,
+                }
+                for company in company_results
+            ]
 
         return jsonify(results), 200
 
     except Exception as e:
         app.logger.exception(f"Search error: {e}")
-        return jsonify({'message': 'Internal server error'}), 500
+        return jsonify({"message": "Internal server error"}), 500
 
 
-@app.get('/search/history')
-@token_required
+@app.get("/search/history")
+@token_required(app, redis_client, Session)
 @after_token_required
 def get_search_history(user, session):
     """
@@ -220,18 +269,29 @@ def get_search_history(user, session):
         description: Internal server error.
     """
     try:
-        search_history = session.query(SearchHistory).filter_by(IdUser=user.IdUser).order_by(SearchHistory.SearchTime.desc()).all()
+        search_history = (
+            session.query(SearchHistory)
+            .filter_by(IdUser=user.IdUser)
+            .order_by(SearchHistory.SearchTime.desc())
+            .all()
+        )
 
         history_list = []
         for history_entry in search_history:
-            history_list.append({
-                "IdSearchHistory": history_entry.IdSearchHistory,
-                "SearchQuery": history_entry.SearchQuery,
-                "SearchTime": history_entry.SearchTime.isoformat() if history_entry.SearchTime else None
-            })
+            history_list.append(
+                {
+                    "IdSearchHistory": history_entry.IdSearchHistory,
+                    "SearchQuery": history_entry.SearchQuery,
+                    "SearchTime": (
+                        history_entry.SearchTime.isoformat()
+                        if history_entry.SearchTime
+                        else None
+                    ),
+                }
+            )
 
         return jsonify(history_list), 200
 
     except Exception as e:
         app.logger.exception(f"Error retrieving search history: {e}")
-        return jsonify({'message': 'Internal server error'}), 500
+        return jsonify({"message": "Internal server error"}), 500
