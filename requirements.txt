@@ -1,0 +1,11 @@
+flask
+gunicorn
+flasgger
+sqlalchemy
+pymysql
+redis
+python-dotenv
+pyjwt
+bcrypt
+urllib3
+cryptography

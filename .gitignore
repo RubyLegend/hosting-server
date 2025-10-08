@@ -6,3 +6,5 @@ previews/*
 !previews/default_video.jpg
 logos/*
 !logos/default_logo.jpg
+*.bak/
+*.pem

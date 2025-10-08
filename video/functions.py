@@ -2,6 +2,7 @@ from flask import Flask, url_for
 import datetime
 import math
 import os
+import urllib
 from typing import Optional, Tuple
 from collections import Counter
 from .. import (
@@ -72,19 +73,13 @@ LINK_EXPIRATION_SECONDS = 3600
 def generate_temporary_link(media_id, filename, host):
     """Generates a temporary link with filename."""
     link_id = str(uuid.uuid4())
-    expiration_time = datetime.datetime.utcnow() + datetime.timedelta(
-        seconds=LINK_EXPIRATION_SECONDS
-    )
-    redis_client.setex(
-        f"temp_link:{link_id}:{filename}", LINK_EXPIRATION_SECONDS, str(media_id)
-    )
+    expiration_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=LINK_EXPIRATION_SECONDS)
+    redis_client.setex(f"temp_link:{link_id}:{filename}", LINK_EXPIRATION_SECONDS, str(media_id))
 
     # URL encode the filename to handle special characters
-    # encoded_filename = urllib.parse.quote(filename)
+    encoded_filename = urllib.parse.quote(filename)
 
-    return url_for(
-        "stream_video_from_link", link_id=link_id, filename=filename, _external=True
-    )
+    return f"/stream/{link_id}/{encoded_filename}"
 
 
 def get_rating_counts(session, media_id, user_id):
