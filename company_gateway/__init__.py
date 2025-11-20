@@ -68,7 +68,7 @@ Base.metadata.create_all(engine)
 # Configuration for uploads
 # UPLOAD_FOLDER = 'uploads'  # Directory to store uploaded files
 # PREVIEW_FOLDER = 'previews'
-LOGO_FOLDER = 'logos'
+LOGO_FOLDER = '/file-share/logos'
 
 # mid files currently not working as expected
 # WMP infinitely loading file without actually caching it

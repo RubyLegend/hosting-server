@@ -10,6 +10,8 @@ ADD video_gateway/video /api-flask/video
 ADD database /api-flask/database
 ADD helpers /api-flask/helpers
 
+RUN mkdir -p /file-share
+
 # Upgrade pip and install Python dependencies
 RUN pip3 install --upgrade pip && pip install --no-cache-dir -r /api-flask/requirements.txt
 

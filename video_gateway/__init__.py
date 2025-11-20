@@ -66,8 +66,8 @@ from .database import accessLevels, comments, companies, \
 Base.metadata.create_all(engine)
 
 # Configuration for uploads
-UPLOAD_FOLDER = 'uploads'  # Directory to store uploaded files
-PREVIEW_FOLDER = 'previews'
+UPLOAD_FOLDER = '/file-share/uploads'  # Directory to store uploaded files
+PREVIEW_FOLDER = '/file-share/previews'
 # LOGO_FOLDER = 'logos'
 
 # mid files currently not working as expected

@@ -89,7 +89,9 @@ responses:
         preview_file = None
 
     try:
-        filename = secure_filename(file.filename)
+        _, ext = os.path.splitext(file.filename)
+        #filename = secure_filename(file.filename)
+        filename = "video"+ext
         original_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         filepath = get_unique_filepath(original_filepath, Session())
         try:

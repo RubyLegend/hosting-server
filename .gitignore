@@ -8,4 +8,5 @@ company_gateway/logos/*
 !company_gateway/logos/default_logo.jpg
 mysql/data/*
 */.env
+*/.env2
 
