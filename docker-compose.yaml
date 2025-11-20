@@ -1,19 +1,21 @@
 services:
-  #redis: # Redis service definition
-  #  image: redis:latest
-  #mysql:
-  #  image: mysql:latest
-  #  env_file: ./mysql/.env
-  #  ports:
-  #    - '3306:33060'
-  #  volumes:
-  #    - ./mysql/data:/var/lib/mysql
-  #  healthcheck:
-  #    test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
-  #    interval: 10s
-  #    retries: 5
-  #    start_period: 30s
-  #    timeout: 10s
+  redis: # Redis service definition
+    image: redis:latest
+    restart: unless-stopped
+  mysql:
+    image: mysql:latest
+    env_file: ./mysql/.env
+    ports:
+      - '3306:33060'
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
   monolith:
     build: 
       context: .
@@ -22,6 +24,11 @@ services:
     ports:
       - '8080:8080'
     env_file: ./.env
+    restart: unless-stopped
+    volumes:
+      - ./logos:/api-flask/logos
+      - ./uploads:/api-flask/uploads
+      - ./previews:/api-flask/previews
     depends_on:
       redis:
         condition: service_started
