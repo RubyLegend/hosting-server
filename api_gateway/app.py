@@ -51,15 +51,24 @@ def get_swagger_json():
         if spec:
             specs.append(spec)
 
-    merged_spec = specs[0]
-    for spec in specs[1:]:
-        merged_spec = deep_merge(merged_spec, spec)
-    
+    if (len(specs) >= 1):
+        merged_spec = specs[0]
+        for spec in specs[1:]:
+            merged_spec = deep_merge(merged_spec, spec)
+    else:
+        merged_spec = {}
+
     merged_spec['info'] = {
         "title": "API Tester",
         "description": "API for testing all endpoints for Media Hosting application",
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
+
+    merged_spec["servers"] = [
+            {"url": "http://10.0.0.4:65534", "description": "Microservices"},
+            {"url": "http://10.0.0.4:65535", "description": "Monolith"},
+        ]
+    merged_spec["openapi"] = "3.0.3"
 
     return jsonify(merged_spec)
 
