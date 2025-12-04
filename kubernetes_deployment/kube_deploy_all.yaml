@@ -1,0 +1,444 @@
+# SECRETS
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  DB_PASSWORD: <fill> 
+  DB_NAME: <fill>
+  SECRET_KEY: <fill>
+
+---
+# CONFIGMAP for api gateway
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+data:
+  USER_SERVICE_URL: http://user-service:9000
+  VIDEO_SERVICE_URL: http://video-service:9000
+  COMPANY_SERVICE_URL: http://company-service:9000
+  SEARCH_SERVICE_URL: http://search-service:9000
+
+---
+# CONFIGMAP for other containers
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservice-config
+data:
+  FLASK_APP: ""
+  FLASK_DEBUG: "true"
+  FLASK_RUN_PORT: "9000"
+  FLASK_ENV: "development"
+  REDIS_HOST: "redis" # Will resolve to IP 10.0.0.4
+  REDIS_PORT: "6379"
+  REDIS_USER: "default"
+  REDIS_PASSWORD: ""
+  REDIS_DB: "0"
+  DB_USER: "root"
+  DB_HOST: "mysql" # Will resolve to IP 10.0.0.4
+  TOKEN_TIMEOUT: "1440"
+  
+
+---
+# API Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service-deployment
+  labels:
+    app: api-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-service
+  template:
+    metadata:
+      labels:
+        app: api-service
+    spec:
+      containers:
+      - name: api-service
+        image: rubylegend/api-service:1.0.5
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: api-gateway-config 
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# User Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service-deployment
+  labels:
+    app: user-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: rubylegend/user-service:1.0.0
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: microservice-config 
+        - secretRef:
+            name: mysql-secret
+
+---
+# Video Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-service-deployment
+  labels:
+    app: video-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: video-service
+  template:
+    metadata:
+      labels:
+        app: video-service
+    spec:
+      containers:
+      - name: video-service
+        image: rubylegend/video-service:1.0.4
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: mysql-secret
+        volumeMounts:
+        - name: azurefile-pvc
+          mountPath: /file-share
+      volumes:
+      - name: azurefile-pvc
+        persistentVolumeClaim:
+          claimName: azurefile-pvc
+
+---
+# Company Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: company-service-deployment
+  labels:
+    app: company-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: company-service
+  template:
+    metadata:
+      labels:
+        app: company-service
+    spec:
+      containers:
+      - name: company-service
+        image: rubylegend/company-service:1.0.1
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: mysql-secret
+        volumeMounts:
+        - name: azurefile-pvc
+          mountPath: /file-share
+      volumes:
+      - name: azurefile-pvc
+        persistentVolumeClaim:
+          claimName: azurefile-pvc
+
+---
+# Search Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service-deployment
+  labels:
+    app: search-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: search-service
+  template:
+    metadata:
+      labels:
+        app: search-service
+    spec:
+      containers:
+      - name: search-service
+        image: rubylegend/search-service:1.0.0
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: microservice-config
+        - secretRef:
+            name: mysql-secret
+
+---
+# SERVICES
+
+# Redis - provide DNS name and accessible port
+kind: Service
+metadata:
+  name: redis
+spec:
+  ports:
+    - protocol: TCP
+      port: 6379 
+      targetPort: 6379 
+  type: ClusterIP
+
+---
+# Endpoints for Redis - determines, where it is located
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: redis
+subsets:
+  - addresses:
+      - ip: 10.0.0.4
+    ports:
+      - port: 6379
+
+---
+# Service for MySQL 
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
+
+---
+# Endpoints for MySQL
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: mysql 
+subsets:
+  - addresses:
+      - ip: 10.0.0.4
+    ports:
+      - port: 3306
+
+---
+# Service for API Gateway
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  selector:
+    app: api-service
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
+
+---
+# Service for User Service 
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  selector:
+    app: user-service
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
+
+---
+# Service for Video Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-service
+spec:
+  selector:
+    app: video-service
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
+
+---
+# Service for Company Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: company-service
+spec:
+  selector:
+    app: company-service
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
+
+---
+# Service for Search Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-service
+spec:
+  selector:
+    app: search-service
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+  type: ClusterIP
+---
+# INGRESS - Dynamic Load Balancer - define all routes here
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microservice-ingress
+  annotations:
+    # For file upload
+    nginx.ingress.kubernetes.io/proxy-body-size: "1G"
+  labels:
+    app: public-router
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: companymediahub-aks.chickenkiller.com
+    http:
+      paths:
+      # User service
+      - path: /users
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 9000
+      - path: /profile
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service
+            port:
+              number: 9000
+      # Video service
+      - path: /video
+        pathType: Prefix
+        backend:
+          service:
+            name: video-service
+            port:
+              number: 9000
+      - path: /stream
+        pathType: Prefix
+        backend:
+          service:
+            name: video-service
+            port:
+              number: 9000
+      - path: /ratings
+        pathType: Prefix
+        backend:
+          service:
+            name: video-service
+            port:
+              number: 9000
+      - path: /comments
+        pathType: Prefix
+        backend:
+          service:
+            name: video-service
+            port:
+              number: 9000
+      - path: /reports
+        pathType: Prefix
+        backend:
+          service:
+            name: video-service
+            port:
+              number: 9000
+      # Company Service
+      - path: /company
+        pathType: Prefix
+        backend:
+          service:
+            name: company-service
+            port:
+              number: 9000
+      # Search Service
+      - path: /search
+        pathType: Prefix
+        backend:
+          service:
+            name: search-service
+            port:
+              number: 9000
+      # Routes for API collector
+      - path: /apidocs
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 9000
+      - path: /flasgger_static
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 9000
+      - path: /apispec_1.json
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 9000
+      - path: /apispec_2.json
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 9000
