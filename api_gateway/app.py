@@ -65,8 +65,9 @@ def get_swagger_json():
     }
 
     merged_spec["servers"] = [
-            {"url": "http://10.0.0.4:65534", "description": "Microservices"},
-            {"url": "http://10.0.0.4:65535", "description": "Monolith"},
+            {"url": "http://companymediahub.chickenkiller.com:65534", "description": "Microservices"},
+            {"url": "http://companymediahub.chickenkiller.com:65535", "description": "Monolith"},
+            {"url": "http://companymediahub-aks.chickenkiller.com:65533", "description": "AKS"},
         ]
     merged_spec["openapi"] = "3.0.3"
 
